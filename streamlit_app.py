@@ -130,3 +130,4 @@ if st.session_state.zoomed_pane is not None:
         st.session_state.zoomed_pane = None  # Exit zoom mode
     st.markdown("</div>", unsafe_allow_html=True)
 
+
