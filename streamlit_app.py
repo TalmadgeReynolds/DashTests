@@ -2,7 +2,7 @@ import openai
 import streamlit as st
 
 # Load OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["openai"]["api_key"]
+client = openai.Client(api_key=st.secrets["openai"]["api_key"])
 
 # Configure Streamlit page
 st.set_page_config(page_title="Dynamic Pane ChatGPT Dashboard", layout="wide")
@@ -60,14 +60,14 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
         
-        # Use the updated ChatCompletion.create method
-        response = openai.ChatCompletion.create(
+        # Use the OpenAI client interface
+        response = client.chat_completions.create(
             model="gpt-3.5-turbo",  # Replace with "gpt-4" if needed
             messages=messages,
             temperature=0.7,
         )
         # Extract the assistant's reply
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error: {e}"
 
