@@ -150,4 +150,3 @@ if st.session_state.zoomed_in_pane is not None:
 
 # Close main content wrapper
 st.markdown("</div>", unsafe_allow_html=True)
-
