@@ -54,16 +54,19 @@ if "zoomed_pane" not in st.session_state:
 # Function to query OpenAI GPT
 def query_gpt(prompt, conversation=None):
     try:
+        # Prepare the conversation messages
         messages = [{"role": "system", "content": "You are a helpful assistant."}]
         if conversation:
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
         
+        # Use the updated ChatCompletion.create method
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # Replace with "gpt-4" if needed
             messages=messages,
             temperature=0.7,
         )
+        # Extract the assistant's reply
         return response["choices"][0]["message"]["content"]
     except Exception as e:
         return f"Error: {e}"
@@ -126,3 +129,4 @@ if st.session_state.zoomed_pane is not None:
     if st.button("Back"):
         st.session_state.zoomed_pane = None  # Exit zoom mode
     st.markdown("</div>", unsafe_allow_html=True)
+
