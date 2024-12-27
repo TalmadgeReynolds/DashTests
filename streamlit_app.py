@@ -1,5 +1,26 @@
-import openai
-import streamlit as st
+import openai.error  # Ensure this is imported
+
+# Function to query OpenAI GPT
+def query_gpt(prompt, conversation=None):
+    try:
+        # Prepare the conversation messages
+        messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        if conversation:
+            messages.extend(conversation)
+        messages.append({"role": "user", "content": prompt})
+        
+        # Use the ChatCompletion.create method
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # Updated to use "gpt-4"
+            messages=messages,
+            temperature=0.7,
+        )
+        # Extract the assistant's reply
+        return response.choices[0].message.content
+    except openai.error.OpenAIError as e:  # Catch OpenAI-specific errors
+        return f"OpenAI API Error: {e}"
+    except Exception as e:  # General fallback for unforeseen issues
+        return f"Unexpected Error: {e}"
 
 # Load OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["openai"]["api_key"]
