@@ -2,7 +2,7 @@ import openai
 import streamlit as st
 
 # Load OpenAI API key from Streamlit secrets
-client = openai.Client(api_key=st.secrets["openai"]["api_key"])
+openai.api_key = st.secrets["openai"]["api_key"]
 
 # Configure Streamlit page
 st.set_page_config(page_title="Dynamic Pane ChatGPT Dashboard", layout="wide")
@@ -60,8 +60,8 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
         
-        # Use the OpenAI client interface
-        response = client.chat_completions.create(
+        # Use the ChatCompletion.create method
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # Replace with "gpt-4" if needed
             messages=messages,
             temperature=0.7,
