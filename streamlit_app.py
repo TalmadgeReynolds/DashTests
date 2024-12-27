@@ -59,16 +59,16 @@ def query_gpt(prompt, conversation=None):
         if conversation:
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
-        
+
         # Use the ChatCompletion.create method
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Replace with "gpt-4" if needed
+            model="gpt-4",  # Updated to use "gpt-4"
             messages=messages,
             temperature=0.7,
         )
         # Extract the assistant's reply
         return response.choices[0].message.content
-    except Exception as e:
+    except openai.error.OpenAIError as e:
         return f"Error: {e}"
 
 # Central Query Pane
@@ -76,7 +76,7 @@ if st.session_state.zoomed_pane is None:
     st.markdown("<div class='query-pane'>", unsafe_allow_html=True)
     st.title("ChatGPT Dashboard")
     prompt = st.text_area("Enter your GPT prompt:", placeholder="Type something...")
-    
+
     if st.button("Submit"):
         if not prompt.strip():
             st.warning("Please enter a valid prompt.")
@@ -129,3 +129,4 @@ if st.session_state.zoomed_pane is not None:
     if st.button("Back"):
         st.session_state.zoomed_pane = None  # Exit zoom mode
     st.markdown("</div>", unsafe_allow_html=True)
+
