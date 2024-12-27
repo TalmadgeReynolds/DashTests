@@ -60,14 +60,14 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
 
-        # Use the ChatCompletion.create method
+        # Use the new ChatCompletion.create method
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # Updated to use "gpt-4"
+            model="gpt-4",  # Specify the model name
             messages=messages,
             temperature=0.7,
         )
         # Extract the assistant's reply
-        return response.choices[0].message.content
+        return response["choices"][0]["message"]["content"]
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
@@ -129,3 +129,4 @@ if st.session_state.zoomed_pane is not None:
     if st.button("Back"):
         st.session_state.zoomed_pane = None  # Exit zoom mode
     st.markdown("</div>", unsafe_allow_html=True)
+
