@@ -60,13 +60,15 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
 
-        # Updated to handle the latest OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-4",  # Use gpt-4 or the desired model
-            messages=messages,
+        # Use the updated completion method for compatibility
+        response = openai.Completion.create(
+            model="gpt-4",  # Specify the model name
+            prompt=prompt,
             temperature=0.7,
+            max_tokens=1000
         )
-        return response["choices"][0]["message"]["content"]
+        # Extract the assistant's reply
+        return response["choices"][0]["text"].strip()
     except Exception as e:
         return f"An error occurred: {str(e)}"
 
