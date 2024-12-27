@@ -1,6 +1,5 @@
 import openai
 import streamlit as st
-from openai.error import AuthenticationError, RateLimitError, OpenAIError
 
 # Load OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["openai"]["api_key"]
@@ -69,14 +68,8 @@ def query_gpt(prompt, conversation=None):
         )
         # Extract the assistant's reply
         return response.choices[0].message.content
-    except AuthenticationError as e:
-        return "Authentication error: Please check your OpenAI API key."
-    except RateLimitError as e:
-        return "Rate limit error: Too many requests in a short period. Please try again later."
-    except OpenAIError as e:
-        return f"OpenAI API Error: {e}"
     except Exception as e:
-        return f"Unexpected Error: {e}"
+        return f"An error occurred: {str(e)}"
 
 # Central Query Pane
 if st.session_state.zoomed_pane is None:
