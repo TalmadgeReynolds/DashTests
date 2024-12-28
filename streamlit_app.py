@@ -2,13 +2,7 @@ import openai
 import streamlit as st
 
 # Load OpenAI API key from Streamlit secrets
-try:
-    openai.api_key = st.secrets["openai"]["api_key"]
-    print("OpenAI API Key loaded successfully from Streamlit secrets.")
-except KeyError:
-    print("Error: OpenAI API Key not found in Streamlit secrets.")
-    openai.api_key = None
-    raise ValueError("OpenAI API Key is required but missing. Please configure it in Streamlit secrets or as an environment variable.")
+openai.api_key = st.secrets["openai"]["api_key"]
 
 # Configure Streamlit page
 st.set_page_config(page_title="Dynamic Pane ChatGPT Dashboard", layout="wide")
