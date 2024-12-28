@@ -1,8 +1,8 @@
 import openai
 import streamlit as st
 
-# Load OpenAI API key from Streamlit secrets
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+# Load openai API key from Streamlit secrets
+client = openai(api_key=st.secrets["openai"]["api_key"])
 
 # Configure Streamlit page
 st.set_page_config(page_title="Dynamic Pane ChatGPT Dashboard", layout="wide")
@@ -51,7 +51,7 @@ if "responses" not in st.session_state:
 if "zoomed_pane" not in st.session_state:
     st.session_state.zoomed_pane = None  # Zoomed pane state
 
-# Function to query OpenAI GPT
+# Function to query openai GPT
 def query_gpt(prompt, conversation=None):
     try:
         # Prepare the conversation messages
