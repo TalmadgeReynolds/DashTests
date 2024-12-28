@@ -61,7 +61,7 @@ def query_gpt(prompt, conversation=None):
         messages.append({"role": "user", "content": prompt})
 
         # Use the chat_completions.create method for chat models
-        response = client.chat_completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4",  # Specify the model name
             messages=messages,
             temperature=0.7,
