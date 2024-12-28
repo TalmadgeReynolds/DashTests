@@ -1,6 +1,5 @@
 import openai
 import streamlit as st
-from openai.error import InvalidRequestError, AuthenticationError, OpenAIError
 
 # Load OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["openai"]["api_key"]
@@ -71,12 +70,8 @@ def query_gpt(prompt, conversation=None):
         # Extract the assistant's reply
         return response["choices"][0]["message"]["content"].strip()
 
-    # Handle specific OpenAI API errors
-    except InvalidRequestError as e:
-        return f"Invalid request: {e}"
-    except AuthenticationError as e:
-        return f"Authentication error: {e}"
-    except OpenAIError as e:
+    # Handle OpenAI API errors generically
+    except openai.error.OpenAIError as e:
         return f"An OpenAI error occurred: {e}"
     # Handle any other unforeseen exceptions
     except Exception as e:
