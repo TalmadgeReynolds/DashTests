@@ -70,12 +70,9 @@ def query_gpt(prompt, conversation=None):
         # Extract the assistant's reply
         return response["choices"][0]["message"]["content"].strip()
 
-    # Handle OpenAI API errors generically
-    except openai.error.OpenAIError as e:
-        return f"An OpenAI error occurred: {e}"
-    # Handle any other unforeseen exceptions
+    # Handle any unforeseen exceptions
     except Exception as e:
-        return f"An unexpected error occurred: {e}"
+        return f"An error occurred: {str(e)}"
 
 # Central Query Pane
 if st.session_state.zoomed_pane is None:
