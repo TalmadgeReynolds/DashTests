@@ -60,8 +60,8 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
 
-        # Use the updated completions.create method for chat models
-        response = client.completions.create(
+        # Use the updated chat_completions.create method for chat models
+        response = client.chat_completions.create(
             model="gpt-4",  # Specify the model name
             messages=messages,
             temperature=0.7,
