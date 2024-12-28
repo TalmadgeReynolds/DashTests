@@ -1,5 +1,6 @@
 import openai
 import streamlit as st
+from openai.error import InvalidRequestError, AuthenticationError, OpenAIError
 
 # Load OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["openai"]["api_key"]
@@ -50,7 +51,7 @@ if "responses" not in st.session_state:
     st.session_state.responses = []  # List of response panes
 if "zoomed_pane" not in st.session_state:
     st.session_state.zoomed_pane = None  # Zoomed pane state
-    
+
 # Function to query OpenAI GPT
 def query_gpt(prompt, conversation=None):
     try:
@@ -60,23 +61,27 @@ def query_gpt(prompt, conversation=None):
             messages.extend(conversation)
         messages.append({"role": "user", "content": prompt})
 
-        # Updated ChatCompletion call
+        # Use the updated ChatCompletion.create method for chat models
         response = openai.ChatCompletion.create(
             model="gpt-4",  # Specify the model name
             messages=messages,
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=1000
         )
         # Extract the assistant's reply
-        return response['choices'][0]['message']['content']
-    except openai.error.InvalidRequestError as e:
+        return response["choices"][0]["message"]["content"].strip()
+
+    # Handle specific OpenAI API errors
+    except InvalidRequestError as e:
         return f"Invalid request: {e}"
-    except openai.error.AuthenticationError as e:
+    except AuthenticationError as e:
         return f"Authentication error: {e}"
-    except openai.error.OpenAIError as e:
+    except OpenAIError as e:
         return f"An OpenAI error occurred: {e}"
+    # Handle any other unforeseen exceptions
     except Exception as e:
         return f"An unexpected error occurred: {e}"
-        
+
 # Central Query Pane
 if st.session_state.zoomed_pane is None:
     st.markdown("<div class='query-pane'>", unsafe_allow_html=True)
