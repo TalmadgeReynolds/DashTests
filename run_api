@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Script to run the FastAPI API server
+
+echo "Starting FastAPI API server..."
+
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Run the FastAPI server using Uvicorn
+cd "$(dirname "$0")/api"
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload

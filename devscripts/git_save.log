@@ -487,3 +487,68 @@ MM devscripts/git_save.log
 2025-04-12 15:23:29,487 - INFO - Command successful: git diff --name-only
 2025-04-12 15:23:29,487 - WARNING - Found unstaged changes after git add, attempting to stage them
 2025-04-12 15:23:29,487 - INFO - Executing command: git add .
+2025-04-12 15:23:29,491 - INFO - Command successful: git add .
+2025-04-12 15:23:29,491 - INFO - Preparing to commit with default message: Update 2025-04-12 15:23
+2025-04-12 15:23:31,423 - INFO - Using commit message: Update 2025-04-12 15:23
+2025-04-12 15:23:31,424 - INFO - Executing command: git commit -m "Update 2025-04-12 15:23"
+2025-04-12 15:23:31,437 - INFO - Command successful: git commit -m "Update 2025-04-12 15:23"
+2025-04-12 15:23:31,438 - INFO - Commit successful
+2025-04-12 15:23:31,438 - INFO - Commit details: [update-20250412 4c0109d] Update 2025-04-12 15:23
+ 1 file changed, 48 insertions(+)
+2025-04-12 15:23:31,438 - INFO - Pushing changes to branch: update-20250412
+2025-04-12 15:23:32,059 - INFO - Successfully pushed changes to update-20250412
+2025-04-12 15:23:32,059 - INFO - === SAVE WORK SCRIPT COMPLETED SUCCESSFULLY ===
+2025-04-12 15:43:53,287 - INFO - === SAVE WORK SCRIPT STARTED ===
+2025-04-12 15:43:53,288 - INFO - Checking Git status for changes...
+2025-04-12 15:43:53,288 - INFO - Executing command: git status --porcelain
+2025-04-12 15:43:53,292 - INFO - Command successful: git status --porcelain
+2025-04-12 15:43:53,292 - INFO - Found 5 changed file(s)
+2025-04-12 15:43:53,292 - INFO - Changes detected in 5 file(s)
+2025-04-12 15:43:53,292 - INFO - Getting current branch...
+2025-04-12 15:43:53,292 - INFO - Executing command: git rev-parse --abbrev-ref HEAD
+2025-04-12 15:43:53,295 - INFO - Command successful: git rev-parse --abbrev-ref HEAD
+2025-04-12 15:43:53,295 - INFO - Current branch: update-20250412
+2025-04-12 15:43:53,295 - INFO - Presenting branch options (current: update-20250412)
+2025-04-12 15:43:55,372 - INFO - User selected option: 2
+2025-04-12 15:43:55,372 - INFO - Suggesting branch name: update-20250412
+2025-04-12 15:44:06,147 - INFO - Creating new branch: update-20250412_v3
+2025-04-12 15:44:06,148 - INFO - Executing command: git checkout -b update-20250412_v3
+2025-04-12 15:44:06,168 - INFO - Command successful: git checkout -b update-20250412_v3
+2025-04-12 15:44:06,168 - INFO - Successfully created and switched to branch: update-20250412_v3
+2025-04-12 15:44:06,168 - INFO - Selected branch: update-20250412_v3
+2025-04-12 15:44:06,168 - INFO - Staging changes...
+2025-04-12 15:44:06,168 - INFO - Executing command: git add .
+2025-04-12 15:44:06,277 - INFO - Command successful: git add .
+2025-04-12 15:44:06,278 - INFO - Successfully ran git add command
+2025-04-12 15:44:06,278 - INFO - Executing command: git status -s
+2025-04-12 15:44:06,283 - INFO - Command successful: git status -s
+2025-04-12 15:44:06,283 - INFO - Staged files: 
+A  api/__pycache__/main.cpython-311.pyc
+A  api/app/config/__init__.py
+A  api/app/config/__pycache__/__init__.cpython-311.pyc
+A  api/app/data/__pycache__/database.cpython-311.pyc
+A  api/app/data/__pycache__/vectorstore.cpython-311.pyc
+A  api/app/data/database.py
+A  api/app/data/vectorstore.py
+A  api/app/search/__pycache__/hybrid_search.cpython-311.pyc
+A  api/app/search/__pycache__/llm_summarizer.cpython-311.pyc
+A  api/app/search/__pycache__/sql_search.cpython-311.pyc
+A  api/app/search/__pycache__/vector_search.cpython-311.pyc
+A  api/app/search/hybrid_search.py
+A  api/app/search/llm_summarizer.py
+A  api/app/search/sql_search.py
+A  api/app/search/vector_search.py
+A  api/main.py
+M  creator-ops/src/components/Q2ArchiveSearch.jsx
+MM devscripts/git_save.log
+A  oldref/config.py
+A  oldref/database.py
+A  oldref/hybrid_search.py
+A  oldref/llm_summarizer.py
+A  oldref/sql_search.py
+A  oldref/vector_search.py
+A  run_api
+2025-04-12 15:44:06,283 - INFO - Executing command: git diff --name-only
+2025-04-12 15:44:06,287 - INFO - Command successful: git diff --name-only
+2025-04-12 15:44:06,287 - WARNING - Found unstaged changes after git add, attempting to stage them
+2025-04-12 15:44:06,287 - INFO - Executing command: git add .
