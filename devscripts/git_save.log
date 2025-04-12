@@ -238,3 +238,51 @@ M  devscripts/saveworkeod_updated.py
 2025-04-12 14:26:18,202 - INFO - Command successful: git diff --name-only
 2025-04-12 14:26:18,202 - WARNING - Found unstaged changes after git add, attempting to stage them
 2025-04-12 14:26:18,202 - INFO - Executing command: git add .
+2025-04-12 14:26:18,205 - INFO - Command successful: git add .
+2025-04-12 14:26:18,206 - INFO - Preparing to commit with default message: Update 2025-04-12 14:26
+2025-04-12 14:26:28,182 - INFO - Using commit message: Scaffold only for react apop. no content
+2025-04-12 14:26:28,182 - INFO - Executing command: git commit -m "Scaffold only for react apop. no content"
+2025-04-12 14:26:28,191 - INFO - Command successful: git commit -m "Scaffold only for react apop. no content"
+2025-04-12 14:26:28,192 - INFO - Commit successful
+2025-04-12 14:26:28,192 - INFO - Commit details: [update-20250412 474e3df] Scaffold only for react apop. no content
+ 5 files changed, 182 insertions(+), 21 deletions(-)
+ delete mode 100644 .env
+ create mode 100644 .env.example
+ create mode 100644 .gitignore
+2025-04-12 14:26:28,192 - INFO - Pushing changes to branch: update-20250412
+2025-04-12 14:26:28,608 - ERROR - GitHub detected sensitive information in your commits
+2025-04-12 14:26:28,608 - ERROR - Failed to push changes, exiting script
+2025-04-12 14:27:22,673 - INFO - === SAVE WORK SCRIPT STARTED ===
+2025-04-12 14:27:22,673 - INFO - Checking Git status for changes...
+2025-04-12 14:27:22,673 - INFO - Executing command: git status --porcelain
+2025-04-12 14:27:22,677 - INFO - Command successful: git status --porcelain
+2025-04-12 14:27:22,677 - INFO - Found 2 changed file(s)
+2025-04-12 14:27:22,677 - INFO - Changes detected in 2 file(s)
+2025-04-12 14:27:22,677 - INFO - Getting current branch...
+2025-04-12 14:27:22,677 - INFO - Executing command: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:27:22,680 - INFO - Command successful: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:27:22,680 - INFO - Current branch: update-20250412
+2025-04-12 14:27:22,681 - INFO - Presenting branch options (current: update-20250412)
+2025-04-12 14:27:25,086 - INFO - User selected option: 2
+2025-04-12 14:27:25,086 - INFO - Suggesting branch name: update-20250412
+2025-04-12 14:27:25,794 - INFO - No name provided, using suggested name: update-20250412
+2025-04-12 14:27:25,795 - INFO - Creating new branch: update-20250412
+2025-04-12 14:27:25,795 - INFO - Executing command: git checkout -b update-20250412
+2025-04-12 14:27:25,798 - ERROR - Command failed: git checkout -b update-20250412
+2025-04-12 14:27:25,798 - ERROR - Error details: fatal: a branch named 'update-20250412' already exists
+
+2025-04-12 14:27:25,798 - INFO - Successfully created and switched to branch: update-20250412
+2025-04-12 14:27:25,798 - INFO - Selected branch: update-20250412
+2025-04-12 14:27:25,798 - INFO - Staging changes...
+2025-04-12 14:27:25,798 - INFO - Executing command: git add .
+2025-04-12 14:27:25,802 - INFO - Command successful: git add .
+2025-04-12 14:27:25,802 - INFO - Successfully ran git add command
+2025-04-12 14:27:25,803 - INFO - Executing command: git status -s
+2025-04-12 14:27:25,806 - INFO - Command successful: git status -s
+2025-04-12 14:27:25,806 - INFO - Staged files: 
+D  .env.example
+MM devscripts/git_save.log
+2025-04-12 14:27:25,806 - INFO - Executing command: git diff --name-only
+2025-04-12 14:27:25,809 - INFO - Command successful: git diff --name-only
+2025-04-12 14:27:25,809 - WARNING - Found unstaged changes after git add, attempting to stage them
+2025-04-12 14:27:25,809 - INFO - Executing command: git add .
