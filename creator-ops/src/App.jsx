@@ -1,10 +1,23 @@
+import { useState } from 'react';
+import './App.css';
+import Q1Trends from './components/Q1Trends';
+import Q2ArchiveSearch from './components/Q2ArchiveSearch';
+import Q3ClipBuilder from './components/Q3ClipBuilder';
+import Q4Planner from './components/Q4Planner';
+
 function App() {
   return (
-    <div className="grid grid-cols-2 grid-rows-2 gap-4 min-h-screen p-6 bg-gray-100">
-      <div className="bg-white p-4 rounded-xl shadow">🟦 Q1 - Trends</div>
-      <div className="bg-white p-4 rounded-xl shadow">🟥 Q3 - Clip Builder</div>
-      <div className="bg-white p-4 rounded-xl shadow">🟨 Q2 - Archive Search</div>
-      <div className="bg-white p-4 rounded-xl shadow">⚪ Q4 - Planning AI</div>
+    <div className="App">
+      <header>
+        <h1 style={{ color: '#ff0000', marginBottom: '30px' }}>Creator Dashboard</h1>
+      </header>
+      
+      <div className="grid-container">
+        <Q1Trends className="grid-item" />
+        <Q2ArchiveSearch className="grid-item" />
+        <Q3ClipBuilder className="grid-item" />
+        <Q4Planner className="grid-item" />
+      </div>
     </div>
   );
 }
