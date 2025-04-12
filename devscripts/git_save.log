@@ -50,3 +50,112 @@ D  streamlit_app.py
 2025-04-12 14:21:31,398 - INFO - Command successful: git diff --name-only
 2025-04-12 14:21:31,399 - WARNING - Found unstaged changes after git add, attempting to stage them
 2025-04-12 14:21:31,399 - INFO - Executing command: git add .
+2025-04-12 14:21:31,402 - INFO - Command successful: git add .
+2025-04-12 14:21:31,402 - INFO - Preparing to commit with default message: Update 2025-04-12 14:21
+2025-04-12 14:21:56,132 - INFO - Using commit message: This is a running Reaqct app with 4 quadrants. No content at all, just a react app scaffold.
+2025-04-12 14:21:56,132 - INFO - Executing command: git commit -m "This is a running Reaqct app with 4 quadrants. No content at all, just a react app scaffold."
+2025-04-12 14:21:56,156 - INFO - Command successful: git commit -m "This is a running Reaqct app with 4 quadrants. No content at all, just a react app scaffold."
+2025-04-12 14:21:56,156 - INFO - Commit successful
+2025-04-12 14:21:56,156 - INFO - Commit details: [main 6be2554] This is a running Reaqct app with 4 quadrants. No content at all, just a react app scaffold.
+ 27 files changed, 3926 insertions(+), 390 deletions(-)
+ delete mode 100644 .devcontainer/devcontainer.json
+ create mode 100644 .env
+ delete mode 100644 .github/CODEOWNERS
+ delete mode 100644 LICENSE
+ delete mode 100644 README.md
+ create mode 100644 creator-ops/.gitignore
+ create mode 100644 creator-ops/README.md
+ create mode 100644 creator-ops/eslint.config.js
+ create mode 100644 creator-ops/index.html
+ create mode 100644 creator-ops/package-lock.json
+ create mode 100644 creator-ops/package.json
+ create mode 100644 creator-ops/postcss.config.cjs
+ create mode 100644 creator-ops/public/vite.svg
+ create mode 100644 creator-ops/src/App.css
+ create mode 100644 creator-ops/src/App.jsx
+ create mode 100644 creator-ops/src/assets/react.svg
+ create mode 100644 creator-ops/src/index.css
+ create mode 100644 creator-ops/src/main.jsx
+ create mode 100644 creator-ops/tailwind.config.cjs
+ create mode 100644 creator-ops/vite.config.js
+ create mode 100644 devscripts/git_save.log
+ create mode 100644 devscripts/saveworkeod_updated.py
+ create mode 100644 package-lock.json
+ create mode 100644 package.json
+ delete mode 100644 requirements.txt
+ create mode 100755 run
+ delete mode 100644 streamlit_app.py
+2025-04-12 14:21:56,157 - INFO - Working on main branch, pulling latest changes before pushing
+2025-04-12 14:21:56,157 - INFO - Pulling latest changes from main...
+2025-04-12 14:21:56,157 - INFO - Executing command: git diff --name-only
+2025-04-12 14:21:56,160 - INFO - Command successful: git diff --name-only
+2025-04-12 14:21:56,160 - WARNING - Cannot pull: unstaged changes detected
+2025-04-12 14:21:56,160 - INFO - Executing command: git add .
+2025-04-12 14:21:56,166 - INFO - Command successful: git add .
+2025-04-12 14:21:56,167 - ERROR - Failed to stage unstaged changes
+2025-04-12 14:21:56,167 - WARNING - Failed to pull latest changes, continuing with push anyway
+2025-04-12 14:21:56,167 - INFO - Pushing changes to branch: main
+2025-04-12 14:21:56,167 - INFO - Executing command: git push origin main
+2025-04-12 14:21:56,692 - ERROR - Command failed: git push origin main
+2025-04-12 14:21:56,692 - ERROR - Error details: remote: This repository moved. Please use the new location:        
+remote:   https://github.com/TalmadgeReynolds/DashTests.git        
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— OpenAI API Key ————————————————————————————————————        
+remote:        locations:        
+remote:          - commit: 6be2554f3f151d45465c889ee3ebba575ab069b0        
+remote:            path: .env:2        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/TalmadgeReynolds/DashTests/security/secret-scanning/unblock-secret/2vdGp5Iv9n6tE1SC6WWQHWJ2Hp0        
+remote:             
+remote: 
+remote: 
+To https://github.com/TalmadgeReynolds/chatbot-2
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/TalmadgeReynolds/chatbot-2'
+
+2025-04-12 14:21:57,131 - ERROR - Failed to push changes to main
+2025-04-12 14:21:57,131 - ERROR - Failed to push changes, exiting script
+2025-04-12 14:22:12,887 - INFO - === SAVE WORK SCRIPT STARTED ===
+2025-04-12 14:22:12,887 - INFO - Checking Git status for changes...
+2025-04-12 14:22:12,887 - INFO - Executing command: git status --porcelain
+2025-04-12 14:22:12,891 - INFO - Command successful: git status --porcelain
+2025-04-12 14:22:12,891 - INFO - Found 1 changed file(s)
+2025-04-12 14:22:12,892 - INFO - Changes detected in 1 file(s)
+2025-04-12 14:22:12,892 - INFO - Getting current branch...
+2025-04-12 14:22:12,892 - INFO - Executing command: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:22:12,895 - INFO - Command successful: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:22:12,895 - INFO - Current branch: main
+2025-04-12 14:22:12,895 - INFO - Presenting branch options (current: main)
+2025-04-12 14:22:16,775 - INFO - User selected option: 2
+2025-04-12 14:22:16,775 - INFO - Suggesting branch name: update-20250412
+2025-04-12 14:22:18,132 - INFO - No name provided, using suggested name: update-20250412
+2025-04-12 14:22:18,132 - INFO - Creating new branch: update-20250412
+2025-04-12 14:22:18,132 - INFO - Executing command: git checkout -b update-20250412
+2025-04-12 14:22:18,137 - INFO - Command successful: git checkout -b update-20250412
+2025-04-12 14:22:18,137 - INFO - Successfully created and switched to branch: update-20250412
+2025-04-12 14:22:18,137 - INFO - Selected branch: update-20250412
+2025-04-12 14:22:18,137 - INFO - Staging changes...
+2025-04-12 14:22:18,137 - INFO - Executing command: git add .
+2025-04-12 14:22:18,141 - INFO - Command successful: git add .
+2025-04-12 14:22:18,141 - INFO - Successfully ran git add command
+2025-04-12 14:22:18,141 - INFO - Executing command: git status -s
+2025-04-12 14:22:18,146 - INFO - Command successful: git status -s
+2025-04-12 14:22:18,147 - INFO - Staged files: 
+MM devscripts/git_save.log
+2025-04-12 14:22:18,147 - INFO - Executing command: git diff --name-only
+2025-04-12 14:22:18,150 - INFO - Command successful: git diff --name-only
+2025-04-12 14:22:18,151 - WARNING - Found unstaged changes after git add, attempting to stage them
+2025-04-12 14:22:18,151 - INFO - Executing command: git add .
