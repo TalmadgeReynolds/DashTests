@@ -1,0 +1,52 @@
+2025-04-12 14:21:16,781 - INFO - === SAVE WORK SCRIPT STARTED ===
+2025-04-12 14:21:16,781 - INFO - Checking Git status for changes...
+2025-04-12 14:21:16,782 - INFO - Executing command: git status --porcelain
+2025-04-12 14:21:16,788 - INFO - Command successful: git status --porcelain
+2025-04-12 14:21:16,788 - INFO - Found 12 changed file(s)
+2025-04-12 14:21:16,788 - INFO - Changes detected in 12 file(s)
+2025-04-12 14:21:16,788 - INFO - Getting current branch...
+2025-04-12 14:21:16,789 - INFO - Executing command: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:21:16,793 - INFO - Command successful: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:21:16,793 - INFO - Current branch: main
+2025-04-12 14:21:16,794 - INFO - Presenting branch options (current: main)
+2025-04-12 14:21:31,375 - INFO - User selected option: 1
+2025-04-12 14:21:31,375 - INFO - Using main branch for commit
+2025-04-12 14:21:31,375 - INFO - Selected branch: main
+2025-04-12 14:21:31,375 - INFO - Staging changes...
+2025-04-12 14:21:31,376 - INFO - Executing command: git add .
+2025-04-12 14:21:31,389 - INFO - Command successful: git add .
+2025-04-12 14:21:31,389 - INFO - Successfully ran git add command
+2025-04-12 14:21:31,389 - INFO - Executing command: git status -s
+2025-04-12 14:21:31,395 - INFO - Command successful: git status -s
+2025-04-12 14:21:31,396 - INFO - Staged files: 
+D  .devcontainer/devcontainer.json
+A  .env
+D  .github/CODEOWNERS
+D  LICENSE
+D  README.md
+A  creator-ops/.gitignore
+A  creator-ops/README.md
+A  creator-ops/eslint.config.js
+A  creator-ops/index.html
+A  creator-ops/package-lock.json
+A  creator-ops/package.json
+A  creator-ops/postcss.config.cjs
+A  creator-ops/public/vite.svg
+A  creator-ops/src/App.css
+A  creator-ops/src/App.jsx
+A  creator-ops/src/assets/react.svg
+A  creator-ops/src/index.css
+A  creator-ops/src/main.jsx
+A  creator-ops/tailwind.config.cjs
+A  creator-ops/vite.config.js
+AM devscripts/git_save.log
+A  devscripts/saveworkeod_updated.py
+A  package-lock.json
+A  package.json
+D  requirements.txt
+A  run
+D  streamlit_app.py
+2025-04-12 14:21:31,396 - INFO - Executing command: git diff --name-only
+2025-04-12 14:21:31,398 - INFO - Command successful: git diff --name-only
+2025-04-12 14:21:31,399 - WARNING - Found unstaged changes after git add, attempting to stage them
+2025-04-12 14:21:31,399 - INFO - Executing command: git add .
