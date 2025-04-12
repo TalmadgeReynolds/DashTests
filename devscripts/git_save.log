@@ -159,3 +159,82 @@ MM devscripts/git_save.log
 2025-04-12 14:22:18,150 - INFO - Command successful: git diff --name-only
 2025-04-12 14:22:18,151 - WARNING - Found unstaged changes after git add, attempting to stage them
 2025-04-12 14:22:18,151 - INFO - Executing command: git add .
+2025-04-12 14:22:18,155 - INFO - Command successful: git add .
+2025-04-12 14:22:18,155 - INFO - Preparing to commit with default message: Update 2025-04-12 14:22
+2025-04-12 14:22:52,057 - INFO - Using commit message: This is scaffold for a React app. No content just a 4 quadrant scaffold.
+2025-04-12 14:22:52,058 - INFO - Executing command: git commit -m "This is scaffold for a React app. No content just a 4 quadrant scaffold."
+2025-04-12 14:22:52,066 - INFO - Command successful: git commit -m "This is scaffold for a React app. No content just a 4 quadrant scaffold."
+2025-04-12 14:22:52,066 - INFO - Commit successful
+2025-04-12 14:22:52,066 - INFO - Commit details: [update-20250412 26c5a71] This is scaffold for a React app. No content just a 4 quadrant scaffold.
+ 1 file changed, 109 insertions(+)
+2025-04-12 14:22:52,066 - INFO - Pushing changes to branch: update-20250412
+2025-04-12 14:22:52,067 - INFO - Executing command: git push origin update-20250412
+2025-04-12 14:22:52,534 - ERROR - Command failed: git push origin update-20250412
+2025-04-12 14:22:52,535 - ERROR - Error details: remote: This repository moved. Please use the new location:        
+remote:   https://github.com/TalmadgeReynolds/DashTests.git        
+remote: error: GH013: Repository rule violations found for refs/heads/update-20250412.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— OpenAI API Key ————————————————————————————————————        
+remote:        locations:        
+remote:          - commit: 6be2554f3f151d45465c889ee3ebba575ab069b0        
+remote:            path: .env:2        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/TalmadgeReynolds/DashTests/security/secret-scanning/unblock-secret/2vdGp5Iv9n6tE1SC6WWQHWJ2Hp0        
+remote:             
+remote: 
+remote: 
+To https://github.com/TalmadgeReynolds/chatbot-2
+ ! [remote rejected] update-20250412 -> update-20250412 (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/TalmadgeReynolds/chatbot-2'
+
+2025-04-12 14:22:52,955 - ERROR - Failed to push changes to update-20250412
+2025-04-12 14:22:52,955 - ERROR - Failed to push changes, exiting script
+2025-04-12 14:26:14,920 - INFO - === SAVE WORK SCRIPT STARTED ===
+2025-04-12 14:26:14,921 - INFO - Checking Git status for changes...
+2025-04-12 14:26:14,921 - INFO - Executing command: git status --porcelain
+2025-04-12 14:26:14,925 - INFO - Command successful: git status --porcelain
+2025-04-12 14:26:14,925 - INFO - Found 5 changed file(s)
+2025-04-12 14:26:14,925 - INFO - Changes detected in 5 file(s)
+2025-04-12 14:26:14,925 - INFO - Getting current branch...
+2025-04-12 14:26:14,925 - INFO - Executing command: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:26:14,929 - INFO - Command successful: git rev-parse --abbrev-ref HEAD
+2025-04-12 14:26:14,929 - INFO - Current branch: update-20250412
+2025-04-12 14:26:14,929 - INFO - Presenting branch options (current: update-20250412)
+2025-04-12 14:26:17,600 - INFO - User selected option: 2
+2025-04-12 14:26:17,600 - INFO - Suggesting branch name: update-20250412
+2025-04-12 14:26:18,185 - INFO - No name provided, using suggested name: update-20250412
+2025-04-12 14:26:18,185 - INFO - Creating new branch: update-20250412
+2025-04-12 14:26:18,185 - INFO - Executing command: git checkout -b update-20250412
+2025-04-12 14:26:18,188 - ERROR - Command failed: git checkout -b update-20250412
+2025-04-12 14:26:18,189 - ERROR - Error details: fatal: a branch named 'update-20250412' already exists
+
+2025-04-12 14:26:18,189 - INFO - Successfully created and switched to branch: update-20250412
+2025-04-12 14:26:18,189 - INFO - Selected branch: update-20250412
+2025-04-12 14:26:18,189 - INFO - Staging changes...
+2025-04-12 14:26:18,189 - INFO - Executing command: git add .
+2025-04-12 14:26:18,195 - INFO - Command successful: git add .
+2025-04-12 14:26:18,195 - INFO - Successfully ran git add command
+2025-04-12 14:26:18,195 - INFO - Executing command: git status -s
+2025-04-12 14:26:18,198 - INFO - Command successful: git status -s
+2025-04-12 14:26:18,199 - INFO - Staged files: 
+D  .env
+A  .env.example
+A  .gitignore
+MM devscripts/git_save.log
+M  devscripts/saveworkeod_updated.py
+2025-04-12 14:26:18,199 - INFO - Executing command: git diff --name-only
+2025-04-12 14:26:18,202 - INFO - Command successful: git diff --name-only
+2025-04-12 14:26:18,202 - WARNING - Found unstaged changes after git add, attempting to stage them
+2025-04-12 14:26:18,202 - INFO - Executing command: git add .

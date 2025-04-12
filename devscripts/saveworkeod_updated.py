@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import re
 from datetime import datetime
 
 # Configure logging
@@ -25,7 +26,7 @@ def run_command(command):
         logger.error(f"Command failed: {command}")
         logger.error(f"Error details: {e.stderr}")
         print(f"❌ Error running command: {command}\n{e.stderr}")
-        return None
+        return e.stderr if e.stderr else None  # Return error message to be inspected
 
 def get_current_branch():
     """Fetches the current Git branch dynamically."""
@@ -194,24 +195,64 @@ def push_changes(branch):
     """Pushes changes to GitHub."""
     logger.info(f"Pushing changes to branch: {branch}")
     print(f"🚀 Pushing to GitHub ({branch})...")
-    result = run_command(f"git push origin {branch}")
     
-    # Check for "up-to-date" message in stderr when command fails
-    if result is None:
-        # Re-run without check=True to capture output even when git reports up-to-date
-        process = subprocess.run(f"git push origin {branch}", shell=True, text=True, capture_output=True)
-        if "Everything up-to-date" in process.stderr or "Everything up-to-date" in process.stdout:
-            logger.info(f"Branch {branch} is already up to date with remote")
-            print(f"✅ Branch '{branch}' is already up to date with remote")
-            return True
-        else:
-            logger.error(f"Failed to push changes to {branch}")
-            return False
+    # Run git push but capture output even if it fails
+    process = subprocess.run(f"git push origin {branch}", shell=True, text=True, capture_output=True)
     
-    logger.info(f"Successfully pushed changes to {branch}")
-    if result:
-        logger.info(f"Push details: {result}")
-    return True
+    # Check for success
+    if process.returncode == 0:
+        logger.info(f"Successfully pushed changes to {branch}")
+        if process.stdout:
+            logger.info(f"Push details: {process.stdout}")
+        print(f"✅ Successfully pushed changes to {branch}")
+        return True
+    
+    # Handle different error cases
+    error_output = process.stderr
+    
+    # Check for "up-to-date" message
+    if "Everything up-to-date" in error_output:
+        logger.info(f"Branch {branch} is already up to date with remote")
+        print(f"✅ Branch '{branch}' is already up to date with remote")
+        return True
+    
+    # Check for secret detection error
+    if "GITHUB PUSH PROTECTION" in error_output and "secret" in error_output:
+        logger.error("GitHub detected sensitive information in your commits")
+        print("\n❌ PUSH REJECTED: GitHub detected sensitive information (API keys, passwords, etc.)")
+        
+        # Extract file paths with secrets if possible
+        secret_files = []
+        path_pattern = r"path: (.*?)$"
+        matches = re.findall(path_pattern, error_output, re.MULTILINE)
+        if matches:
+            secret_files = [m.strip() for m in matches]
+        
+        # Extract unblock URL if available
+        unblock_url = None
+        url_pattern = r"https://github\.com/.*?/security/secret-scanning/unblock-secret/[a-zA-Z0-9]+"
+        url_matches = re.findall(url_pattern, error_output)
+        if url_matches:
+            unblock_url = url_matches[0]
+        
+        # Print helpful instructions
+        print("\n🔐 HOW TO FIX THIS ISSUE:")
+        print("  1. Remove the sensitive information from your files and commit the changes")
+        if secret_files:
+            print(f"     Files to check: {', '.join(secret_files)}")
+        print("  2. Use 'git filter-repo' or 'BFG Repo Cleaner' to remove secrets from git history")
+        print("     (See: https://docs.github.com/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)")
+        
+        if unblock_url:
+            print(f"\n  Alternative: If this is a false positive, you can use this URL to allow the push:")
+            print(f"  {unblock_url}")
+            print("  ⚠️ Warning: Only do this if you're certain the detected secret is not real or sensitive")
+        
+        return False
+        
+    # Handle other push errors
+    logger.error(f"Failed to push changes to {branch}")
+    return False
 
 def main():
     """Runs the full Git automation process."""
@@ -259,7 +300,7 @@ def main():
     
     if not push_changes(branch):
         logger.error("Failed to push changes, exiting script")
-        print("❌ Failed to push changes. Exiting.")
+        print("❌ Failed to push changes. Script completed but push was rejected.")
         return
 
     logger.info("=== SAVE WORK SCRIPT COMPLETED SUCCESSFULLY ===")
