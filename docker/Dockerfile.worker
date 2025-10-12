@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Run the worker
+# Can be overridden with docker run command to specify a specific queue
+# e.g., docker run -e QUEUE=option1 lipsync-worker
+ENV QUEUE=""
+CMD ["sh", "-c", "python -m backend.worker ${QUEUE:+--queue $QUEUE}"]

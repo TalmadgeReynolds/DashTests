@@ -1,0 +1,23 @@
+%% Mermaid ERD for Jobs/Assets
+erDiagram
+  JOB {
+    uuid id PK
+    string method
+    string status
+    string engine
+    text input_text
+    uuid audio_asset_id FK
+    uuid image_asset_id FK
+    string output_url
+    json meta
+    datetime created_at
+    datetime updated_at
+  }
+  ASSET {
+    uuid id PK
+    string kind
+    string url
+    json meta
+    datetime created_at
+  }
+  JOB ||--o{ ASSET : "uses (audio/image/video)"

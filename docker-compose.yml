@@ -1,0 +1,133 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=lipsync
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lipsync
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET=lipsync
+      - STORAGE_USE_SSL=false
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:9000
+      - VEO3_MOCK_MODE=true
+      - ELEVENLABS_MOCK_MODE=true
+      - HEYGEN_MOCK_MODE=true
+      - POSTFX_MOCK_MODE=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-option1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lipsync
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET=lipsync
+      - STORAGE_USE_SSL=false
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:9000
+      - VEO3_MOCK_MODE=true
+      - ELEVENLABS_MOCK_MODE=true
+      - HEYGEN_MOCK_MODE=true
+      - POSTFX_MOCK_MODE=true
+      - QUEUE=option1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+        
+  worker-option2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/lipsync
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET=lipsync
+      - STORAGE_USE_SSL=false
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:9000
+      - VEO3_MOCK_MODE=true
+      - ELEVENLABS_MOCK_MODE=true
+      - HEYGEN_MOCK_MODE=true
+      - POSTFX_MOCK_MODE=true
+      - QUEUE=option2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

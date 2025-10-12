@@ -1,0 +1,182 @@
+openapi: 3.0.3
+info:
+  title: AI Lip-Sync API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000/api/v1
+paths:
+  /lipsync/prompt:
+    post:
+      summary: Create a prompt → lip-sync job
+      requestBody:
+        $ref: '#/components/requestBodies/CreatePromptJob'
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+  /lipsync/audio:
+    post:
+      summary: Create an audio-driven job
+      requestBody:
+        $ref: '#/components/requestBodies/CreateAudioJob'
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+  /jobs/{id}:
+    get:
+      summary: Get job by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+  /jobs:
+    get:
+      summary: List jobs
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: method
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+  /uploads/presign:
+    post:
+      summary: Create a presigned upload
+      requestBody:
+        $ref: '#/components/requestBodies/PresignRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignResponse'
+components:
+  requestBodies:
+    CreatePromptJob:
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [script]
+            properties:
+              script:
+                type: string
+                minLength: 8
+                maxLength: 500
+              reference_image_url:
+                type: string
+                format: uri
+                nullable: true
+              post:
+                $ref: '#/components/schemas/PostFX'
+              video:
+                $ref: '#/components/schemas/VideoOpts'
+    CreateAudioJob:
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [image_url]
+            properties:
+              image_url:
+                type: string
+                format: uri
+              audio_url:
+                type: string
+                format: uri
+                nullable: true
+              tts:
+                type: object
+                nullable: true
+                properties:
+                  provider: { type: string, enum: [elevenlabs] }
+                  voice_id: { type: string, nullable: true }
+                  text: { type: string, minLength: 3 }
+                  stability: { type: number, minimum: 0, maximum: 1, default: 0.65 }
+                  similarity_boost: { type: number, minimum: 0, maximum: 1, default: 0.75 }
+                  pace: { type: number, minimum: 0.5, maximum: 1.5, default: 1.0 }
+              action_prompt:
+                type: string
+                maxLength: 120
+                nullable: true
+              post:
+                $ref: '#/components/schemas/PostFX'
+              video:
+                $ref: '#/components/schemas/VideoOpts'
+    PresignRequest:
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [filename, mime, kind]
+            properties:
+              filename: { type: string }
+              mime: { type: string }
+              kind: { type: string, enum: [IMAGE, AUDIO, VIDEO] }
+  schemas:
+    Job:
+      type: object
+      properties:
+        id: { type: string }
+        method: { type: string, enum: [PROMPT_TO_LIPSYNC, AUDIO_DRIVEN] }
+        status: { type: string, enum: [QUEUED, RUNNING, POST, DONE, ERROR] }
+        engine: { type: string, enum: [veo3, heygen] }
+        output_url: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        meta: { type: object, additionalProperties: true }
+    PostFX:
+      type: object
+      properties:
+        interpolate: { type: boolean, default: true }
+        upscale: { type: boolean, default: false }
+    VideoOpts:
+      type: object
+      properties:
+        fps: { type: integer, enum: [24, 30], default: 24 }
+        aspect: { type: string, enum: ['16:9','9:16','1:1'], default: '16:9' }
+        max_duration: { type: integer, default: 12 }
+    PresignResponse:
+      type: object
+      properties:
+        uploadUrl: { type: string }
+        fileUrl: { type: string }
