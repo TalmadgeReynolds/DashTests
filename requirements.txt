@@ -13,3 +13,6 @@ boto3>=1.28.56,<1.29.0
 structlog>=23.1.0,<23.2.0
 prometheus-client>=0.17.1,<0.18.0
 backoff>=2.2.1,<2.3.0
+openai>=1.3.0,<2.0.0
+anthropic>=0.40.0,<1.0.0
+numpy>=1.26.0,<2.0.0

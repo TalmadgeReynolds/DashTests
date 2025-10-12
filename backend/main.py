@@ -14,8 +14,8 @@ from .utils.prometheus import (
     jobs_created_total, jobs_failed_total, 
     provider_latency_ms, postfx_runtime_s
 )
-from .exceptions import LipSyncException
-from .routes import lipsync, jobs, uploads, webhooks
+from .exceptions import LipSyncException, ProviderError
+from .routes import lipsync, jobs, uploads, webhooks, prompts
 
 settings = get_settings()
 logger = get_logger("app")
@@ -175,6 +175,7 @@ app.include_router(lipsync.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
+app.include_router(prompts.router, prefix="/api/v1")
 
 
 # Health check endpoint
