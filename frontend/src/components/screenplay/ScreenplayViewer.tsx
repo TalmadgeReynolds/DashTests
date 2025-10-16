@@ -202,9 +202,27 @@ export default function ScreenplayViewer({
       {/* Footer Controls */}
       {!loading && !error && pdfUrl && (
         <div className="px-4 py-3 bg-white border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            {/* Page Navigation */}
+          <div className="flex flex-col space-y-3">
+            {/* Generate Talking Head Button - Now at Bottom Left */}
             <div className="flex items-center gap-3">
+              {selectedText && (
+                <button
+                  onClick={handleUseSelection}
+                  disabled={!selectedText || processTextMutation.isPending}
+                  className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+                >
+                  {processTextMutation.isPending ? 'Processing...' : 'Generate Talking Head'}
+                </button>
+              )}
+              {selectedText && (
+                <span className="text-xs text-gray-600">
+                  {selectedText.length} characters selected
+                </span>
+              )}
+            </div>
+            
+            {/* Page Navigation */}
+            <div className="flex items-center justify-center gap-3">
               <button
                 onClick={goToPrevPage}
                 disabled={pageNumber <= 1}
@@ -224,23 +242,8 @@ export default function ScreenplayViewer({
               </button>
             </div>
 
-          {/* Selection Actions */}
-          <div className="flex items-center gap-3">
-            {selectedText && (
-              <div className="text-sm text-gray-600">
-                {selectedText.length} characters selected
-              </div>
-            )}
-            <button
-              onClick={handleUseSelection}
-              disabled={!selectedText || processTextMutation.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
-            >
-              {processTextMutation.isPending ? 'Processing...' : 'Use Selection as Prompt'}
-            </button>
           </div>
         </div>
-      </div>
       )}
     </div>
   );

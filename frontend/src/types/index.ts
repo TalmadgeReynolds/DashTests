@@ -83,25 +83,24 @@ export interface CreateJobRequest {
 }
 
 export interface PromptSharpenRequest {
-  prompt: string;
+  original: string;
   model: 'gpt' | 'claude' | 'both';
-  num_variants?: number;
+  variants?: number;
   temperature?: number;
+  max_tokens?: number;
 }
 
 export interface PromptVariant {
-  model: 'gpt-4o' | 'claude-3.5-sonnet';
-  variant: string;
-  score: number;
-  changes: string[];
-  reasoning: string;
-  similarity: number;
+  text: string; // The sharpened prompt text
+  source: string; // Model that generated this variant (gpt or claude)
+  score: number; // Overall quality score (0-1)
+  similarity: number; // Semantic similarity to original (0-1)
+  diff: string; // Human-readable diff showing changes
 }
 
 export interface PromptSharpenResponse {
-  original: string;
-  variants: PromptVariant[];
-  best_variant: PromptVariant;
+  original: string; // Original input prompt
+  variants: PromptVariant[]; // Ranked list of sharpened variants
 }
 
 export interface CostEstimate {

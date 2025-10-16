@@ -15,7 +15,9 @@ from .utils.prometheus import (
     provider_latency_ms, postfx_runtime_s
 )
 from .exceptions import LipSyncException, ProviderError
-from .routes import lipsync, jobs, uploads, webhooks, prompts, screenplay, images, voices, avatars
+from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars
+# Use mock implementation for prompts
+from .routes import prompts_mock as prompts
 from .routes.websockets import setup_socketio
 from .routes import websocket_test
 
