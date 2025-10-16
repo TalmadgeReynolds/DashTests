@@ -1,5 +1,6 @@
 import uuid
 import json
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -15,6 +16,7 @@ from ..adapters.heygen_adapter import HeygenAdapter
 from ..adapters.tts_elevenlabs import ElevenLabsAdapter
 from ..adapters.postfx import PostFxAdapter
 from ..db import db_transaction
+from .websocket_utils import update_job_with_ws
 
 settings = get_settings()
 logger = get_logger("orchestrator")
@@ -129,6 +131,16 @@ class Orchestrator:
                 }
             ]
         }
+        
+        # Add avatar configuration if present
+        if request.avatar:
+            meta["avatar"] = {
+                "avatar_id": request.avatar.avatar_id,
+                "look": request.avatar.look
+            }
+            meta["workflow"] = "avatar_video"
+        else:
+            meta["workflow"] = "talking_photo"
         
         # Create job record
         with db_transaction() as session:
@@ -286,6 +298,9 @@ class Orchestrator:
             session.add(job)
         
         log_job_event(str(job.id), "status_changed", extra={"status": "RUNNING"})
+        
+        # Send WebSocket update
+        asyncio.create_task(update_job_with_ws(job.id, "RUNNING", 0.1))
     
     def _transition_to_post(self, job: Job) -> None:
         """Transition a job from RUNNING to POST"""
@@ -316,6 +331,9 @@ class Orchestrator:
             session.add(job)
         
         log_job_event(str(job.id), "status_changed", extra={"status": "POST"})
+        
+        # Send WebSocket update
+        asyncio.create_task(update_job_with_ws(job.id, "POST", 0.7))
     
     def _transition_to_done(self, job: Job, output_url: str) -> None:
         """Transition a job to DONE state with output URL"""
@@ -356,6 +374,9 @@ class Orchestrator:
             session.add(job)
         
         log_job_event(str(job.id), "status_changed", extra={"status": "DONE", "output_url": output_url})
+        
+        # Send WebSocket update
+        asyncio.create_task(update_job_with_ws(job.id, "DONE", 1.0))
     
     def _transition_to_error(self, job: Job, error_message: str, error_code: str = "PROCESSING_ERROR") -> None:
         """Transition a job to ERROR state"""
@@ -387,6 +408,9 @@ class Orchestrator:
             session.add(job)
         
         log_job_event(str(job.id), "status_changed", extra={"status": "ERROR", "error_message": error_message})
+        
+        # Send WebSocket update
+        asyncio.create_task(update_job_with_ws(job.id, "ERROR", None))
     
     async def _process_prompt_job(self, job: Job) -> None:
         """Process a prompt-to-lipsync job with Veo 3"""
@@ -489,13 +513,17 @@ class Orchestrator:
     async def _process_audio_job(self, job: Job) -> None:
         """Process an audio-driven job with Heygen"""
         meta = job.meta
-        image_url = meta["image_url"]
+        workflow = meta.get("workflow", "talking_photo")  # Default to talking_photo for backward compatibility
+        
+        image_url = meta.get("image_url")
+        avatar = meta.get("avatar")
         audio_url = meta.get("audio_url")
         tts = meta.get("tts")
         action_prompt = meta.get("action_prompt")
         
         video_opts = meta.get("video", {})
         fps = video_opts.get("fps", 24)
+        aspect = video_opts.get("aspect", "16:9")
         
         now = datetime.utcnow()
         now_iso = now.isoformat()
@@ -509,6 +537,12 @@ class Orchestrator:
             voice_id = tts.get("voice_id")
             stability = tts.get("stability", 0.65)
             similarity_boost = tts.get("similarity_boost", 0.75)
+            style = tts.get("style", 0.0)
+            speaker_boost = tts.get("speaker_boost", True)
+            optimize_streaming_latency = tts.get("optimize_streaming_latency", 0)
+            model_id = tts.get("model_id", "eleven_turbo_v2_5")
+            output_format = tts.get("output_format", "mp3_44100_128")
+            seed = tts.get("seed")
             pace = tts.get("pace", 1.0)
             
             meta["timeline"].append({
@@ -517,7 +551,8 @@ class Orchestrator:
                 "data": {
                     "provider": "elevenlabs",
                     "text_length": len(tts_text),
-                    "voice_id": voice_id
+                    "voice_id": voice_id,
+                    "model_id": model_id
                 }
             })
             
@@ -528,48 +563,105 @@ class Orchestrator:
             log_job_event(str(job.id), "tts_start")
             
             # Generate speech with ElevenLabs
-            audio_url = self.tts_adapter.synthesize(
-                tts_text,
-                voice_id,
-                stability,
-                similarity_boost,
-                pace
+            audio_bytes = await self.tts_adapter.synthesize(
+                text=tts_text,
+                voice_id=voice_id,
+                stability=stability,
+                similarity_boost=similarity_boost,
+                style=style,
+                speaker_boost=speaker_boost,
+                optimize_streaming_latency=optimize_streaming_latency,
+                model_id=model_id,
+                output_format=output_format,
+                seed=seed,
+                pace=pace
             )
+            
+            # Save audio to storage
+            audio_key = self.storage_service.upload_bytes(
+                audio_bytes,
+                filename=f"tts-{job.id}.mp3",
+                content_type="audio/mpeg"
+            )
+            
+            # Get presigned URL for audio
+            audio_url = self.storage_service.get_presigned_url(audio_key, expires_in=86400)  # 24 hours
             
             now = datetime.utcnow()
             now_iso = now.isoformat()
             
             # Update job metadata with the generated audio URL
             meta["audio_url"] = audio_url
+            meta["audio_key"] = audio_key  # Store key for later reference
             meta["timeline"].append({
                 "step": "tts_complete",
                 "ts": now_iso,
-                "data": {"audio_url": audio_url}
+                "data": {"audio_url": audio_url, "audio_key": audio_key}
             })
             
             job.meta = meta
             with db_transaction() as session:
                 session.add(job)
             
-            log_job_event(str(job.id), "tts_complete", extra={"audio_url": audio_url})
+            log_job_event(str(job.id), "tts_complete", extra={"audio_url": audio_url, "audio_key": audio_key})
         
-        # Submit job to Heygen
-        provider_job_id = self.heygen_adapter.create_talking_photo(
-            image_url,
-            audio_url,
-            action_prompt,
-            fps
-        )
+        # Submit job to Heygen using either talking photo or avatar video workflow
+        provider_job_id = None
         
-        now = datetime.utcnow()
-        now_iso = now.isoformat()
-        
-        # Update job with provider job ID and timeline
-        meta["timeline"].append({
-            "step": "provider_job_created",
-            "ts": now_iso,
-            "data": {"provider": "heygen", "provider_job_id": provider_job_id}
-        })
+        if workflow == "talking_photo":
+            if not image_url:
+                logger.error("missing_image_url", job_id=str(job.id))
+                self._transition_to_error(job, "Missing image URL for talking photo workflow")
+                return
+                
+            provider_job_id = self.heygen_adapter.create_talking_photo(
+                image_url,
+                audio_url,
+                action_prompt,
+                fps
+            )
+            
+            meta["timeline"].append({
+                "step": "provider_job_created",
+                "ts": now_iso,
+                "data": {
+                    "provider": "heygen", 
+                    "workflow": "talking_photo",
+                    "provider_job_id": provider_job_id
+                }
+            })
+        elif workflow == "avatar_video":
+            if not avatar or not avatar.get("avatar_id"):
+                logger.error("missing_avatar_id", job_id=str(job.id))
+                self._transition_to_error(job, "Missing avatar configuration for avatar video workflow")
+                return
+                
+            avatar_id = avatar.get("avatar_id")
+            look = avatar.get("look")
+            
+            provider_job_id = self.heygen_adapter.generate_avatar_video(
+                avatar_id=avatar_id,
+                audio_url=audio_url,
+                action_prompt=action_prompt,
+                look=look,
+                fps=fps,
+                aspect_ratio=aspect
+            )
+            
+            meta["timeline"].append({
+                "step": "provider_job_created",
+                "ts": now_iso,
+                "data": {
+                    "provider": "heygen", 
+                    "workflow": "avatar_video",
+                    "avatar_id": avatar_id,
+                    "provider_job_id": provider_job_id
+                }
+            })
+        else:
+            logger.error("invalid_workflow", job_id=str(job.id), workflow=workflow)
+            self._transition_to_error(job, f"Invalid workflow: {workflow}")
+            return
         
         job.provider_job_id = provider_job_id
         job.meta = meta

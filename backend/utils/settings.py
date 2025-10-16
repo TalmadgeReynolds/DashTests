@@ -1,6 +1,16 @@
 from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any
 from functools import lru_cache
+import os
+
+
+def parse_bool(value):
+    """Parse string representations of boolean values properly"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('yes', 'true', 't', '1', 'on')
+    return bool(value)
 
 
 class Settings(BaseSettings):
@@ -9,7 +19,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # Global mock mode flag - overrides all provider-specific flags
-    MOCK_PROVIDERS: bool = True
+    MOCK_PROVIDERS: bool = parse_bool(os.getenv('MOCK_PROVIDERS', 'true'))
     
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/lipsync"
@@ -22,8 +32,9 @@ class Settings(BaseSettings):
     STORAGE_ACCESS_KEY: str = "minioadmin"
     STORAGE_SECRET_KEY: str = "minioadmin"
     STORAGE_BUCKET: str = "lipsync"
-    STORAGE_USE_SSL: bool = False  # Set to True for production
+    STORAGE_USE_SSL: bool = parse_bool(os.getenv('STORAGE_USE_SSL', 'false'))  # Set to True for production
     STORAGE_PUBLIC_ENDPOINT: str = "http://localhost:9000"  # Public-facing URL for generated URLs
+    STORAGE_MOCK_MODE: bool = parse_bool(os.getenv('STORAGE_MOCK_MODE', 'false'))  # Use mock storage implementation
     
     # Provider API keys (set to None to use mock mode)
     VEO3_API_KEY: Optional[str] = None
@@ -55,6 +66,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"  # Allow extra environment variables
 
 
 @lru_cache()

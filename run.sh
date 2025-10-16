@@ -125,7 +125,23 @@ function setup_database() {
     
     DB_AVAILABLE=false
     
-    # Check if PostgreSQL is already running
+    # Check if DATABASE_URL contains RDS or other remote DB endpoints
+    if [[ "$DATABASE_URL" =~ .*\.rds\. ]] || [[ "$DATABASE_URL" =~ .*\.amazonaws\.com ]] || [[ "$POSTGRES_HOST" =~ .*\.rds\. ]] || [[ "$POSTGRES_HOST" =~ .*\.amazonaws\.com ]]; then
+        echo_info "AWS RDS database detected"
+        
+        # Try connecting to the RDS database
+        if command -v pg_isready > /dev/null; then
+            if pg_isready -h ${POSTGRES_HOST:-localhost} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-postgres} > /dev/null 2>&1; then
+                echo_success "Connected to AWS RDS database successfully"
+                DB_AVAILABLE=true
+                return 0
+            else
+                echo_warning "Could not connect to AWS RDS database. Check your credentials and security group settings."
+            fi
+        fi
+    fi
+    
+    # Check if PostgreSQL is already running locally
     if command -v pg_isready > /dev/null; then
         if pg_isready -h ${POSTGRES_HOST:-localhost} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-postgres} > /dev/null 2>&1; then
             echo_success "PostgreSQL is already running"
@@ -178,9 +194,10 @@ function setup_database() {
     fi
     
     if [ "$DB_AVAILABLE" = false ]; then
-        echo_error "Could not connect to PostgreSQL!"
-        echo_warning "Please start PostgreSQL manually or install Docker"
-        return 1
+        echo_warning "Could not connect to PostgreSQL!"
+        echo_warning "Database features will not work. Start PostgreSQL manually to enable."
+        echo_info "Continuing without database..."
+        return 0
     fi
 }
 
@@ -243,23 +260,21 @@ function setup_redis() {
 function setup_python_backend() {
     echo_info "Setting up Python backend environment..."
     
-    # Activate or create virtual environment
-    if [ -z "$VIRTUAL_ENV" ]; then
-        if [ ! -d "venv" ]; then
-            echo_info "Creating Python virtual environment..."
-            python3 -m venv venv || python -m venv venv
-        fi
-        echo_info "Activating virtual environment..."
-        source venv/bin/activate
-    else
+    # Check which Python we're using
+    if [ -n "$VIRTUAL_ENV" ]; then
         echo_info "Using existing virtual environment: $VIRTUAL_ENV"
+    else
+        echo_info "Using system Python: $(which python3 || which python)"
     fi
     
     # Install/update Python dependencies
     echo_info "Installing Python dependencies..."
-    pip install --quiet --upgrade pip > /dev/null 2>&1
-    pip install --quiet -r requirements.txt
-    echo_success "Python dependencies installed"
+    if pip install --quiet --upgrade pip > /dev/null 2>&1 && pip install --quiet -r requirements.txt 2>&1; then
+        echo_success "Python dependencies installed"
+    else
+        echo_warning "Some Python dependencies may not have installed correctly"
+        echo_info "Continuing anyway..."
+    fi
     
     # Check for required system tools
     if ! command -v ffmpeg &> /dev/null; then
@@ -270,11 +285,34 @@ function setup_python_backend() {
 
 function init_database() {
     echo_info "Initializing database schema..."
-    python -c "from backend.db import init_db; init_db()" 2>/dev/null || echo_warning "Database init skipped"
     
-    echo_info "Running database migrations..."
-    alembic upgrade head
-    echo_success "Database ready"
+    # Check if we're using an RDS database
+    if [[ "$DATABASE_URL" =~ .*\.rds\. ]] || [[ "$DATABASE_URL" =~ .*\.amazonaws\.com ]] || [[ "$POSTGRES_HOST" =~ .*\.rds\. ]] || [[ "$POSTGRES_HOST" =~ .*\.amazonaws\.com ]]; then
+        echo_info "Using AWS RDS database - checking alembic setup"
+        
+        # Run the setup_alembic.py script to configure alembic for RDS
+        if python setup_alembic.py; then
+            echo_success "AWS RDS alembic setup complete"
+        else
+            echo_warning "AWS RDS alembic setup failed"
+            return 1
+        fi
+    else
+        # Regular database initialization for local DB
+        if python -c "from backend.db import init_db; init_db()" 2>/dev/null; then
+            echo_success "Database schema initialized"
+        else
+            echo_warning "Database init skipped (database not available)"
+            return 0
+        fi
+        
+        echo_info "Running database migrations..."
+        if alembic upgrade head 2>/dev/null; then
+            echo_success "Database migrations complete"
+        else
+            echo_warning "Database migrations skipped (database not available)"
+        fi
+    fi
 }
 
 ###############################################################################
@@ -293,7 +331,8 @@ function setup_frontend() {
     
     # Check if Node.js is installed
     if ! command -v node &> /dev/null; then
-        echo_error "Node.js is not installed. Please install Node.js 18+ to run the frontend."
+        echo_warning "Node.js is not installed. Frontend will not be available."
+        echo_info "Install Node.js 18+ to enable the frontend."
         cd ..
         return 1
     fi
@@ -362,6 +401,9 @@ trap cleanup SIGINT SIGTERM EXIT
 
 function run_api() {
     echo_section "Starting API Server"
+    echo_info "Backend will start without requiring database (will skip if DB not available)"
+    echo_info "Using mock mode for providers (set ELEVENLABS_MOCK_MODE=false to use real API)"
+    echo ""
     uvicorn backend.main:app \
         --host ${API_HOST:-0.0.0.0} \
         --port ${API_PORT:-8000} \
@@ -410,52 +452,70 @@ function run_backend_only() {
 function run_full_stack() {
     echo_section "Starting Full Stack Application"
     echo_info "Services: API + Worker + Frontend"
+    echo_info "Note: Services will start even if dependencies are not fully available"
     echo ""
     
     # Start API server
     echo_info "Starting API server..."
-    uvicorn backend.main:app \
+    if uvicorn backend.main:app \
         --host ${API_HOST:-0.0.0.0} \
         --port ${API_PORT:-8000} \
         --reload \
-        --log-level ${LOG_LEVEL:-info} &
-    API_PID=$!
-    echo_success "✓ API server: http://localhost:${API_PORT:-8000}"
-    echo_info "  - API docs: http://localhost:${API_PORT:-8000}/docs"
-    echo_info "  - Health: http://localhost:${API_PORT:-8000}/health"
+        --log-level ${LOG_LEVEL:-debug} &
+    then
+        API_PID=$!
+        echo_success "✓ API server: http://localhost:${API_PORT:-8000}"
+        echo_info "  - API docs: http://localhost:${API_PORT:-8000}/docs"
+        echo_info "  - Health: http://localhost:${API_PORT:-8000}/health"
+    else
+        echo_warning "⚠ API server may have issues starting"
+    fi
     
     # Wait for API to start
     sleep 2
     
     # Start worker
     echo_info "Starting background worker..."
-    python -m backend.worker &
-    WORKER_PID=$!
-    echo_success "✓ Worker running (PID: $WORKER_PID)"
+    if python -m backend.worker &
+    then
+        WORKER_PID=$!
+        echo_success "✓ Worker running (PID: $WORKER_PID)"
+    else
+        echo_warning "⚠ Worker may not be available (Redis might not be running)"
+    fi
     
     # Wait for backend to stabilize
     sleep 2
     
     # Start frontend
     echo_info "Starting frontend dev server..."
-    cd frontend
-    npm run dev &
-    FRONTEND_PID=$!
-    cd ..
-    
-    # Wait for frontend to start
-    sleep 3
-    echo_success "✓ Frontend: http://localhost:3000"
+    if [ -d "frontend" ]; then
+        cd frontend
+        if npm run dev > /tmp/frontend.log 2>&1 &
+        then
+            FRONTEND_PID=$!
+            cd ..
+            sleep 3
+            echo_success "✓ Frontend: http://localhost:5173"
+        else
+            cd ..
+            echo_warning "⚠ Frontend failed to start (check /tmp/frontend.log)"
+        fi
+    else
+        echo_warning "⚠ Frontend directory not found"
+    fi
     
     echo ""
     echo_success "═══════════════════════════════════════════════════"
-    echo_success "  All services running!"
+    echo_success "  Application Started!"
     echo_success "═══════════════════════════════════════════════════"
-    echo_info "  Frontend:  http://localhost:3000"
-    echo_info "  API:       http://localhost:${API_PORT:-8000}"
-    echo_info "  API Docs:  http://localhost:${API_PORT:-8000}/docs"
+    [ -n "$FRONTEND_PID" ] && echo_info "  Frontend:  http://localhost:5173"
+    [ -n "$API_PID" ] && echo_info "  API:       http://localhost:${API_PORT:-8000}"
+    [ -n "$API_PID" ] && echo_info "  API Docs:  http://localhost:${API_PORT:-8000}/docs"
     echo_success "═══════════════════════════════════════════════════"
     echo ""
+    [ -n "$API_PID" ] || [ -n "$FRONTEND_PID" ] || echo_warning "Note: Some services may not be fully functional"
+    echo_info "Logs are shown directly in this terminal window for easier debugging"
     echo_info "Press Ctrl+C to stop all services"
     
     # Wait for any process to exit
@@ -536,14 +596,15 @@ case "$MODE" in
     "full"|"")
         echo_section "AI Lip-Sync Application"
         echo_info "Mode: Full Stack"
+        echo_info "Note: Will start even if database/Redis are not available"
         echo ""
         
         setup_env
-        setup_database
-        setup_redis
+        setup_database || echo_warning "Database not available - continuing without it"
+        setup_redis || echo_warning "Redis not available - worker features will be limited"
         setup_python_backend
         setup_frontend
-        init_database
+        init_database || echo_warning "Database init skipped"
         run_full_stack
         ;;
         

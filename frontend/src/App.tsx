@@ -6,6 +6,8 @@ import { Layout } from '@/components/layout/Layout';
 import Dashboard from '@/pages/Dashboard';
 import Composer from '@/pages/Composer';
 import JobDetail from '@/pages/JobDetail';
+import Screenplay from '@/pages/Screenplay';
+import TestAvatarApi from '@/pages/TestAvatarApi';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +29,8 @@ function AppContent() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/create" element={<Composer />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route path="/screenplay" element={<Screenplay />} />
+        <Route path="/test-avatar-api" element={<TestAvatarApi />} />
         {/* Add more routes as needed */}
       </Routes>
     </Layout>

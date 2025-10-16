@@ -13,7 +13,7 @@ flowchart LR
 A[User] --> B[React ## Troubleshooting
 
 ### API & Authenticatio**Q: Can I generate the portrait instead of uploading?**  
-A: Yes—use Vertex AI Imagen for portrait generation. The app supports both uploaded images and AI-generated ones.
+A: Yes! Both Option 1 and Option 2 now include a "Generate with AI" button that uses Vertex AI Imagen to create photorealistic portraits optimized for lip-sync. Just describe the person you want and click generate.
 
 **Q: Do I need Topaz Video AI?**  
 A: No—RIFE + Real‑ESRGAN are the free defaults. Topaz is a premium option for professional-grade enhancement.
@@ -86,6 +86,7 @@ C -->|status| B
 
 - [What This Is](#what-this-is)
 - [Feature Highlights](#feature-highlights)
+- [Screenplay Studio](#screenplay-studio)
 - [Architecture](#architecture)
 - [Workflows](#workflows)
   - [Option 1 — Prompt → Lip‑Sync (Veo 3)](#option-1--prompt--lip-sync-veo-3)
@@ -128,16 +129,179 @@ Both options share the same queue, storage, and post‑FX pipeline. Adapters kee
 
 ## Feature Highlights
 
-- 🔌 **Two turnkey methods:** mirrors the tutorial’s Option 1 & Option 2
-- 🧩 **Provider adapters:** `veo_adapter`, `heygen_adapter`, `tts_elevenlabs`, `postfx`
+- 🔌 **Two turnkey methods:** mirrors the tutorial's Option 1 & Option 2
+- 🧩 **Provider adapters:** `veo_adapter`, `heygen_adapter`, `tts_elevenlabs`, `postfx`, `imagen_adapter`
+- 🎨 **AI Portrait Generation:** Generate photorealistic portraits with Vertex AI Imagen on both workflows
+- 🎙️ **Professional Voice Synthesis:** Full-featured ElevenLabs integration with voice library, cloning, and 5 AI models
 - 🧠 **Consistent voices (Option 2):** store & reuse **ElevenLabs voice_id**
 - 🎛️ **Action prompts:** atomic motion cues for Heygen (blink/nod/tilt)
 - 🧽 **Polish pipeline:** **Interpolate → Upscale** (RIFE + Real‑ESRGAN by default; Topaz optional)
+- 📝 **Screenplay Studio:** Upload PDF screenplays, view side-by-side with dashboard, select text to create prompts
 - 🗂️ **Job gallery:** compare takes, re‑run with different presets
 - 🧾 **Lineage:** render.json per take (inputs, prompts, settings, hashes)
 - 💵 **Cost controls:** budget vs studio presets, estimated credit/$ readout
 - 🛡️ **Safety/consent:** voice‑likeness disclaimers, basic content checks
 - 📈 **Observability:** structured logs, metrics hooks, job timeline
+
+---
+
+## Screenplay Studio
+
+The **Screenplay Studio** feature allows you to upload PDF screenplays and use them as the source for your video prompts. This is perfect for adapting scripts into video content.
+
+### Key Capabilities
+
+- **📤 PDF Upload**: Upload screenplay PDFs up to 50MB with drag-and-drop support
+- **📖 Side-by-Side Viewing**: View your screenplay alongside the dashboard in a 3-panel layout
+- **✂️ Text Selection**: Select any portion of your screenplay text with a simple click-and-drag
+- **🎬 Instant Prompts**: Convert selected text into prompts for video generation with one click
+- **🗂️ Library Management**: Browse, search, and manage all your uploaded screenplays
+- **🔍 Page Navigation**: Navigate through your screenplay with zoom controls and page-by-page viewing
+
+### How It Works
+
+1. **Upload** - Navigate to the "Script" section and upload your PDF screenplay
+2. **Browse** - The app extracts text and displays your screenplay in a reader
+3. **Select** - Highlight any dialogue or scene description
+4. **Create** - Click "Use Selection as Prompt" to create a video job with that text
+
+### Technical Details
+
+- **Storage**: PDFs stored in S3/MinIO alongside other assets
+- **Text Extraction**: Automatic text extraction using PyPDF2 for searchability
+- **Rendering**: Client-side PDF rendering with react-pdf for smooth viewing
+- **Integration**: Selected text flows directly into Option 1 or Option 2 workflows
+
+See [docs/features/SCREENPLAY.md](features/SCREENPLAY.md) for complete documentation.
+
+---
+
+## Professional Voice Synthesis (ElevenLabs)
+
+The **ElevenLabs integration** provides production-grade text-to-speech with comprehensive voice management, model selection, and advanced synthesis controls.
+
+### Voice Features
+
+- **🎤 Voice Library**: Access ElevenLabs' extensive library of professional voices with search/filter
+- **👤 Voice Cloning**: Create custom voices from audio samples (instant and professional cloning)
+- **🌍 Multilingual Support**: 29+ languages with dedicated models
+- **⚡ Turbo Models**: Low-latency models (v2, v2.5) for real-time/interactive applications
+- **🎨 Advanced Controls**: Fine-tune stability, similarity, style, and speaker boost
+- **🎵 Multiple Formats**: 7 audio formats from telephony (8kHz) to studio quality (44.1kHz PCM)
+- **🔁 Reproducible Generation**: Use seeds for consistent regeneration
+- **💾 Automatic Storage**: Audio automatically saved to S3/MinIO with presigned URLs
+
+### Available Models
+
+| Model | Use Case | Latency | Quality | Languages |
+|-------|----------|---------|---------|-----------|
+| **Turbo v2.5** | Real-time, interactive | Lowest | Very High | English |
+| **Turbo v2** | Fast applications | Very Low | High | English |
+| **Multilingual v2** | Professional content | Medium | Highest | 29+ |
+| **Multilingual v1** | General multilingual | Medium | High | 29+ |
+| **Monolingual v1** | Legacy English | High | High | English |
+
+### Quick Examples
+
+**Generate with Custom Voice:**
+```python
+from backend.adapters.tts_elevenlabs import ElevenLabsAdapter
+
+adapter = ElevenLabsAdapter()
+audio = await adapter.synthesize(
+    text="Your script here",
+    voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+    model_id="eleven_turbo_v2",
+    stability=0.65,
+    similarity_boost=0.75
+)
+```
+
+**Clone a Voice:**
+```python
+# Upload 2-5 audio samples
+with open("sample1.mp3", "rb") as f1, open("sample2.mp3", "rb") as f2:
+    samples = [f1.read(), f2.read()]
+
+voice_id = await adapter.clone_voice(
+    name="My Brand Voice",
+    files=samples,
+    description="Professional narration voice"
+)
+```
+
+**List Available Voices:**
+```python
+voices = await adapter.list_voices(filter_name="rachel")
+# Returns: [{"voice_id": "...", "name": "Rachel", "category": "premade", ...}]
+```
+
+### Integration in Option 2 Workflow
+
+In **Option 2 (Audio + Image → Lip-Sync)**, ElevenLabs generates the audio that drives the Heygen facial animation:
+
+1. **Text Input** → ElevenLabs TTS → Audio File
+2. **Audio File** + **Image** → Heygen → Lip-Synced Video
+3. Optional: **Post-FX** (RIFE interpolation, Topaz/Real-ESRGAN upscaling)
+
+The audio is automatically:
+- Generated with your chosen voice and settings
+- Saved to S3/MinIO storage
+- Linked to the job via presigned URL
+- Passed to Heygen for lip-sync animation
+
+### Advanced Features
+
+**Reproducible Generation:**
+```python
+# Same seed = identical audio
+audio = await adapter.synthesize(text="Hello", seed=42)
+```
+
+**Streaming Optimization:**
+```python
+audio = await adapter.synthesize(
+    text="Your text",
+    optimize_streaming_latency=3  # 0-4, higher = lower latency
+)
+```
+
+**Style Control:**
+```python
+audio = await adapter.synthesize(
+    text="Dramatic narration...",
+    style=0.5,  # 0-1, higher = more exaggerated/expressive
+    speaker_boost=True  # Enhanced voice clarity
+)
+```
+
+**Professional Quality:**
+```python
+audio = await adapter.synthesize(
+    text="Documentary voiceover...",
+    model_id="eleven_multilingual_v2",  # Highest quality
+    output_format="mp3_44100_192"  # High bitrate
+)
+```
+
+### Configuration
+
+```bash
+# Required
+ELEVENLABS_API_KEY=your-api-key-here
+
+# Optional
+ELEVENLABS_MOCK_MODE=false
+ELEVENLABS_DEFAULT_MODEL=eleven_turbo_v2
+ELEVENLABS_DEFAULT_VOICE=21m00Tcm4TlvDq8ikWAM  # Rachel
+```
+
+See [docs/features/ELEVENLABS_VOICE_FEATURES.md](features/ELEVENLABS_VOICE_FEATURES.md) for complete documentation including:
+- Voice cloning best practices
+- Model selection guide
+- Parameter tuning recommendations
+- Output format comparison
+- Troubleshooting common issues
 
 ---
 
@@ -432,6 +596,48 @@ Base URL: `http://localhost:8000/api/v1`
 - **IMAGE**: JPEG/PNG, ≤ 10MB
 - **AUDIO**: MP3/WAV, ≤ 20MB  
 - **VIDEO**: MP4, ≤ 100MB
+
+---
+
+### Image Generation API (Vertex AI Imagen)
+
+**POST `/images/generate-portrait`** - Generate portrait optimized for lip-sync
+```json
+{
+  "description": "professional businessman in his 40s, warm smile",
+  "gender": "male",
+  "age": "middle-aged",
+  "style": "photorealistic",
+  "aspect_ratio": "1:1"
+}
+```
+**Response:**
+```json
+{
+  "image_url": "https://s3.../generated-portrait.png",
+  "asset_id": "uuid",
+  "metadata": {
+    "prompt": "Professional headshot portrait...",
+    "model": "imagen-3.0",
+    "optimized_for": "lip-sync"
+  }
+}
+```
+
+**POST `/images/generate`** - Generate custom image
+```json
+{
+  "prompt": "cinematic portrait, dramatic lighting",
+  "negative_prompt": "blurry, low quality",
+  "aspect_ratio": "16:9",
+  "style": "cinematic"
+}
+```
+
+**Validation:**
+- Description/prompt: 10-1000 characters
+- Supported aspect ratios: `1:1`, `16:9`, `9:16`, `4:3`, `3:4`
+- Styles: `photorealistic`, `cinematic`, `professional`
 
 ---
 

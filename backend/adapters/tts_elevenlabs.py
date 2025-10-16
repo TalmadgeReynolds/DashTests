@@ -1,6 +1,8 @@
+import asyncio
 import time
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Literal
+from pathlib import Path
 
 import httpx
 import backoff
@@ -12,9 +14,39 @@ from ..exceptions import ProviderError, TransientProviderError, ProviderTimeoutE
 settings = get_settings()
 logger = get_logger("tts_elevenlabs")
 
+# Available models
+MODELS = {
+    "eleven_monolingual_v1": "English v1 - Original English model",
+    "eleven_multilingual_v1": "Multilingual v1 - Original multilingual",
+    "eleven_multilingual_v2": "Multilingual v2 - Latest multilingual (29+ languages)",
+    "eleven_turbo_v2": "Turbo v2 - Fastest, lowest latency",
+    "eleven_turbo_v2_5": "Turbo v2.5 - Enhanced turbo model"
+}
+
+# Output formats
+OUTPUT_FORMATS = {
+    "mp3_44100_128": "MP3 44.1kHz 128kbps",
+    "mp3_44100_192": "MP3 44.1kHz 192kbps", 
+    "pcm_16000": "PCM 16kHz",
+    "pcm_22050": "PCM 22.05kHz",
+    "pcm_24000": "PCM 24kHz",
+    "pcm_44100": "PCM 44.1kHz",
+    "ulaw_8000": "μ-law 8kHz"
+}
+
 
 class ElevenLabsAdapter:
-    """Adapter for ElevenLabs Text-to-Speech API"""
+    """
+    Enhanced adapter for ElevenLabs Text-to-Speech API
+    
+    Features:
+    - Voice library management
+    - Voice cloning
+    - Multiple models (including Turbo v2 and Multilingual v2)
+    - Advanced voice settings
+    - Audio storage integration
+    - History tracking
+    """
     
     def __init__(self, api_key: Optional[str] = None, mock_mode: bool = None):
         self.api_key = api_key or settings.ELEVENLABS_API_KEY
@@ -87,64 +119,49 @@ class ElevenLabsAdapter:
         except httpx.RequestError as e:
             raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
     
-    @backoff.on_exception(
-        backoff.expo,
-        (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
-        max_tries=5,
-        base=0.5,
-        factor=2,
-        jitter=backoff.full_jitter
-    )
-    def synthesize(self, text: str, voice_id: Optional[str] = None, 
-                  stability: float = 0.65, similarity_boost: float = 0.75, pace: float = 1.0) -> str:
-        """Synthesize speech from text and return the audio URL"""
+    async def list_voices(self, filter_name: Optional[str] = None) -> List[Dict]:
+        """
+        List all available voices.
+        
+        Args:
+            filter_name: Optional filter for voice names
+            
+        Returns:
+            List of voice dictionaries with id, name, category, labels, etc.
+        """
         if self.mock_mode:
-            logger.info("elevenlabs_mock_synthesize", text=text[:30], voice_id=voice_id)
-            time.sleep(2)  # Simulate API call
+            logger.info("elevenlabs_mock_list_voices")
+            mock_voices_list = [
+                {
+                    "voice_id": self.mock_voices["rachel"],
+                    "name": "Rachel",
+                    "category": "premade",
+                    "labels": {"accent": "american", "age": "young", "gender": "female"}
+                },
+                {
+                    "voice_id": self.mock_voices["drew"],
+                    "name": "Drew",
+                    "category": "premade",
+                    "labels": {"accent": "american", "age": "middle_aged", "gender": "male"}
+                },
+                {
+                    "voice_id": self.mock_voices["clyde"],
+                    "name": "Clyde",
+                    "category": "premade",
+                    "labels": {"accent": "american", "age": "middle_aged", "gender": "male"}
+                }
+            ]
             
-            # Create deterministic audio ID based on input parameters
-            if not voice_id:
-                voice_id = self.mock_voices["default"]
-                
-            # Create a deterministic hash for consistent results in mock mode
-            text_hash = hash(text) % 1000
-            voice_hash = hash(voice_id) % 100
-            params_hash = hash(f"{stability}-{similarity_boost}-{pace}") % 10
+            if filter_name:
+                mock_voices_list = [v for v in mock_voices_list if filter_name.lower() in v["name"].lower()]
             
-            mock_audio_id = f"mock-tts-{text_hash:03d}-{voice_hash:02d}-{params_hash}-{int(time.time())}"
-            audio_url = f"https://mock-elevenlabs.com/{mock_audio_id}.mp3"
-            
-            logger.info("elevenlabs_mock_audio_url", audio_url=audio_url)
-            return audio_url
+            return mock_voices_list
         
-        # Use default voice if none provided
-        voice_id = voice_id or "21m00Tcm4TlvDq8ikWAM"
-        
-        start_time = time.time()
         try:
-            with httpx.Client(timeout=30.0) as client:
-                response = client.post(
-                    f"{self.base_url}/text-to-speech/{voice_id}",
-                    headers={"xi-api-key": self.api_key},
-                    json={
-                        "text": text,
-                        "model_id": "eleven_monolingual_v1",
-                        "voice_settings": {
-                            "stability": stability,
-                            "similarity_boost": similarity_boost,
-                            "style": 0,
-                            "use_speaker_boost": True,
-                            "speed": pace
-                        }
-                    }
-                )
-                
-                elapsed_ms = (time.time() - start_time) * 1000
-                logger.info(
-                    "elevenlabs_synthesize_response",
-                    status_code=response.status_code,
-                    latency_ms=elapsed_ms,
-                    text_length=len(text)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/voices",
+                    headers={"xi-api-key": self.api_key}
                 )
                 
                 if response.status_code == 429:
@@ -154,17 +171,268 @@ class ElevenLabsAdapter:
                 elif response.status_code >= 400:
                     raise ProviderError(f"ElevenLabs API error: {response.text}")
                 
-                # We need to save the audio file and get a URL
-                # In a real implementation, this would upload to storage
-                # For now, let's mock this part
+                voices = response.json()["voices"]
+                
+                if filter_name:
+                    voices = [v for v in voices if filter_name.lower() in v["name"].lower()]
+                
+                logger.info("elevenlabs_list_voices", count=len(voices))
+                return voices
+                
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError("ElevenLabs API request timed out")
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
+    
+    async def get_voice(self, voice_id: str) -> Dict:
+        """
+        Get detailed information about a specific voice.
+        
+        Args:
+            voice_id: The voice ID to retrieve
+            
+        Returns:
+            Voice details dictionary
+        """
+        if self.mock_mode:
+            logger.info("elevenlabs_mock_get_voice", voice_id=voice_id)
+            return {
+                "voice_id": voice_id,
+                "name": "Mock Voice",
+                "category": "cloned",
+                "settings": {"stability": 0.75, "similarity_boost": 0.75}
+            }
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/voices/{voice_id}",
+                    headers={"xi-api-key": self.api_key}
+                )
+                
+                if response.status_code >= 400:
+                    raise ProviderError(f"Voice not found or API error: {response.text}")
+                
+                return response.json()
+                
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
+    
+    async def clone_voice(self, name: str, files: List[bytes], description: Optional[str] = None,
+                         labels: Optional[Dict] = None) -> str:
+        """
+        Clone a voice from audio samples.
+        
+        Args:
+            name: Name for the cloned voice
+            files: List of audio file contents (bytes)
+            description: Optional description
+            labels: Optional labels (e.g., {"accent": "american", "age": "young"})
+            
+        Returns:
+            voice_id of the newly created voice
+        """
+        if self.mock_mode:
+            logger.info("elevenlabs_mock_clone_voice", name=name, file_count=len(files))
+            mock_voice_id = f"mock-cloned-{hash(name) % 10000}"
+            return mock_voice_id
+        
+        try:
+            # Prepare multipart form data
+            files_data = []
+            for idx, file_bytes in enumerate(files):
+                files_data.append(("files", (f"sample_{idx}.mp3", file_bytes, "audio/mpeg")))
+            
+            data = {"name": name}
+            if description:
+                data["description"] = description
+            if labels:
+                data["labels"] = str(labels)
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/voices/add",
+                    headers={"xi-api-key": self.api_key},
+                    data=data,
+                    files=files_data
+                )
+                
+                if response.status_code >= 400:
+                    raise ProviderError(f"Voice cloning failed: {response.text}")
+                
+                result = response.json()
+                voice_id = result["voice_id"]
+                
+                logger.info("elevenlabs_voice_cloned", voice_id=voice_id, name=name)
+                return voice_id
+                
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
+    
+    async def delete_voice(self, voice_id: str) -> bool:
+        """
+        Delete a cloned voice.
+        
+        Args:
+            voice_id: The voice ID to delete
+            
+        Returns:
+            True if successful
+        """
+        if self.mock_mode:
+            logger.info("elevenlabs_mock_delete_voice", voice_id=voice_id)
+            return True
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.delete(
+                    f"{self.base_url}/voices/{voice_id}",
+                    headers={"xi-api-key": self.api_key}
+                )
+                
+                if response.status_code >= 400:
+                    raise ProviderError(f"Voice deletion failed: {response.text}")
+                
+                logger.info("elevenlabs_voice_deleted", voice_id=voice_id)
+                return True
+                
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
+    
+    async def get_subscription_info(self) -> Dict:
+        """
+        Get subscription information including character limits and usage.
+        
+        Returns:
+            Dictionary with subscription details
+        """
+        if self.mock_mode:
+            logger.info("elevenlabs_mock_subscription_info")
+            return {
+                "tier": "free",
+                "character_count": 5000,
+                "character_limit": 10000,
+                "can_extend_character_limit": True
+            }
+        
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/user/subscription",
+                    headers={"xi-api-key": self.api_key}
+                )
+                
+                if response.status_code >= 400:
+                    raise ProviderError(f"Failed to get subscription info: {response.text}")
+                
+                return response.json()
+                
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"ElevenLabs API request error: {str(e)}")
+    
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
+        max_tries=5,
+        base=0.5,
+        factor=2,
+        jitter=backoff.full_jitter
+    )
+    async def synthesize(
+        self, 
+        text: str, 
+        voice_id: Optional[str] = None,
+        model_id: str = "eleven_turbo_v2",
+        stability: float = 0.65, 
+        similarity_boost: float = 0.75, 
+        style: float = 0.0,
+        speaker_boost: bool = True,
+        pace: float = 1.0,
+        output_format: str = "mp3_44100_128",
+        seed: Optional[int] = None,
+        optimize_streaming_latency: int = 0
+    ) -> bytes:
+        """
+        Synthesize speech from text and return the audio content.
+        
+        Args:
+            text: Text to synthesize
+            voice_id: Voice ID to use (defaults to Rachel)
+            model_id: Model to use (default: eleven_turbo_v2)
+            stability: Voice stability (0-1)
+            similarity_boost: Voice similarity (0-1)
+            style: Exaggeration level (0-1)
+            speaker_boost: Enhance voice similarity
+            pace: Speech speed multiplier
+            output_format: Audio format (e.g., mp3_44100_128)
+            seed: Seed for reproducible generation
+            optimize_streaming_latency: Latency optimization level (0-4)
+            
+        Returns:
+            Audio content as bytes
+        """
+        if not voice_id:
+            voice_id = await self.ensure_voice(self.default_voice)
+        
+        if self.mock_mode:
+            logger.info("elevenlabs_mock_synthesize", voice_id=voice_id, text_len=len(text), model=model_id)
+            await asyncio.sleep(1.0)
+            # Return mock audio bytes (1 second of silence as MP3)
+            mock_audio = b'\xff\xfb\x90\x00' + b'\x00' * 1024
+            return mock_audio
+        
+        # Validate parameters
+        if model_id not in MODELS:
+            raise ValueError(f"Invalid model_id: {model_id}. Must be one of {list(MODELS.keys())}")
+        if output_format not in OUTPUT_FORMATS:
+            raise ValueError(f"Invalid output_format: {output_format}. Must be one of {list(OUTPUT_FORMATS.keys())}")
+        
+        payload = {
+            "text": text,
+            "model_id": model_id,
+            "voice_settings": {
+                "stability": stability,
+                "similarity_boost": similarity_boost,
+                "style": style,
+                "use_speaker_boost": speaker_boost
+            }
+        }
+        
+        if seed is not None:
+            payload["seed"] = seed
+        
+        # Build query parameters
+        params = {
+            "output_format": output_format,
+            "optimize_streaming_latency": optimize_streaming_latency
+        }
+        
+        try:
+            start = time.time()
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/text-to-speech/{voice_id}",
+                    json=payload,
+                    params=params,
+                    headers={"xi-api-key": self.api_key}
+                )
+                
+                if response.status_code == 429:
+                    raise ProviderRateLimitError("ElevenLabs API rate limit exceeded")
+                elif response.status_code >= 500:
+                    raise TransientProviderError(f"ElevenLabs API server error: {response.status_code}")
+                elif response.status_code >= 400:
+                    raise ProviderError(f"ElevenLabs API error: {response.text}")
+                
                 audio_content = response.content
-                audio_id = uuid.uuid4()
-                audio_url = f"https://storage.example.com/audio/{audio_id}.mp3"
+                duration = time.time() - start
                 
-                # TODO: Save audio to storage service
+                logger.info("elevenlabs_synthesize_success",
+                           voice_id=voice_id, text_len=len(text), audio_size=len(audio_content),
+                           duration_sec=round(duration, 2), model=model_id, format=output_format)
                 
-                return audio_url
-                
+                return audio_content
+        
         except httpx.TimeoutException:
             raise ProviderTimeoutError("ElevenLabs API request timed out")
         except httpx.RequestError as e:

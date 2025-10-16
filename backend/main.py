@@ -15,7 +15,9 @@ from .utils.prometheus import (
     provider_latency_ms, postfx_runtime_s
 )
 from .exceptions import LipSyncException, ProviderError
-from .routes import lipsync, jobs, uploads, webhooks, prompts
+from .routes import lipsync, jobs, uploads, webhooks, prompts, screenplay, images, voices, avatars
+from .routes.websockets import setup_socketio
+from .routes import websocket_test
 
 settings = get_settings()
 logger = get_logger("app")
@@ -29,8 +31,12 @@ async def lifespan(app: FastAPI):
     # Set up logging
     setup_logging()
     
-    # Initialize database
-    init_db()
+    # Initialize database (skip if not available)
+    try:
+        init_db()
+        logger.info("database_initialized", message="Database connected successfully")
+    except Exception as e:
+        logger.warning("database_init_skipped", message=f"Database not available, continuing without it: {str(e)}")
     
     logger.info("application_startup", message="Starting AI Lip-Sync API")
     yield
@@ -48,8 +54,8 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    # Allow frontend origin as requested
-    allow_origins=["http://localhost:5173"],
+    # Allow all origins for development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -176,6 +182,18 @@ app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(uploads.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(prompts.router, prefix="/api/v1")
+app.include_router(screenplay.router, prefix="/api/v1")
+app.include_router(images.router, prefix="/api/v1")
+app.include_router(voices.router, prefix="/api/v1")
+app.include_router(avatars.router, prefix="/api/v1")
+app.include_router(websocket_test.router, prefix="/api/v1")
+
+# Import our new access routes
+from .routes import access
+app.include_router(access.router, prefix="/api/v1")
+
+# Set up WebSocket (Socket.IO) support
+setup_socketio(app)
 
 
 # Health check endpoint

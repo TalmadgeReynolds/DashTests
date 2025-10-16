@@ -2,7 +2,7 @@ import time
 import uuid
 import hmac
 import hashlib
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any, Union
 
 import httpx
 import backoff
@@ -23,6 +23,7 @@ class HeygenAdapter:
         # Check both specific setting and global MOCK_PROVIDERS flag
         self.mock_mode = mock_mode if mock_mode is not None else (settings.HEYGEN_MOCK_MODE or settings.MOCK_PROVIDERS)
         self.base_url = "https://api.heygen.com/v1"
+        self.base_url_v2 = "https://api.heygen.com/v2"
         self.webhook_secret = settings.WEBHOOK_SECRET_HEYGEN
         
         if not self.api_key and not self.mock_mode:
@@ -111,6 +112,303 @@ class HeygenAdapter:
             raise ProviderTimeoutError("Heygen API request timed out")
         except httpx.RequestError as e:
             raise TransientProviderError(f"Heygen API request error: {str(e)}")
+
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
+        max_tries=5,
+        base=0.5,
+        factor=2,
+        jitter=backoff.full_jitter
+    )
+    def create_avatar(self, image_urls: List[str], avatar_name: Optional[str] = None) -> str:
+        """
+        Create a new avatar from uploaded photos using Heygen Photo Avatar API
+        
+        Args:
+            image_urls: List of image URLs (with visible face)
+            avatar_name: Optional name for the avatar
+            
+        Returns:
+            avatar_id: ID of the created avatar
+        """
+        if self.mock_mode:
+            logger.info("heygen_mock_create_avatar", image_urls=image_urls, avatar_name=avatar_name)
+            time.sleep(1)  # Simulate API call
+            
+            # Create deterministic avatar ID based on input for mock mode
+            image_hash = hash(str(image_urls)) % 1000
+            name_hash = hash(avatar_name or "default") % 100
+            
+            mock_id = f"mock-heygen-avatar-{image_hash:03d}-{name_hash:02d}-{int(time.time())}"
+            logger.info("heygen_mock_avatar_id_created", avatar_id=mock_id)
+            return mock_id
+            
+        start_time = time.time()
+        try:
+            # Prepare request payload
+            payload = {
+                "image_urls": image_urls,
+                "mode": "avatar",  # For Photo Avatar (vs digital_human)
+            }
+            
+            if avatar_name:
+                payload["name"] = avatar_name
+                
+            with httpx.Client(timeout=60.0) as client:
+                response = client.post(
+                    f"{self.base_url_v2}/avatar/create",
+                    headers={"x-api-key": self.api_key},
+                    json=payload
+                )
+                
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.info(
+                    "heygen_create_avatar_response",
+                    status_code=response.status_code,
+                    latency_ms=elapsed_ms
+                )
+                
+                if response.status_code == 429:
+                    raise ProviderRateLimitError("Heygen API rate limit exceeded")
+                elif response.status_code >= 500:
+                    raise TransientProviderError(f"Heygen API server error: {response.status_code}")
+                elif response.status_code >= 400:
+                    raise ProviderError(f"Heygen API error: {response.text}")
+                
+                result = response.json()
+                return result["data"]["avatar_id"]
+                
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError("Heygen API request timed out")
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"Heygen API request error: {str(e)}")
+
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
+        max_tries=5,
+        base=0.5,
+        factor=2,
+        jitter=backoff.full_jitter
+    )
+    def list_avatars(self, avatar_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        List avatars from Heygen
+        
+        Args:
+            avatar_ids: Optional list of avatar IDs to filter by
+            
+        Returns:
+            List of avatar objects
+        """
+        if self.mock_mode:
+            logger.info("heygen_mock_list_avatars", avatar_ids=avatar_ids)
+            time.sleep(1)  # Simulate API call
+            
+            # Generate mock avatars
+            mock_avatars = []
+            base_ids = ["mock-heygen-avatar-001", "mock-heygen-avatar-002"] if not avatar_ids else avatar_ids
+            
+            for i, avatar_id in enumerate(base_ids):
+                mock_avatars.append({
+                    "avatar_id": avatar_id,
+                    "name": f"Mock Avatar {i+1}",
+                    "image_url": f"https://mock-heygen-avatar.com/image_{i+1}.jpg",
+                    "status": "ready",
+                    "created_at": int(time.time()) - (i * 86400)  # Each avatar a day apart
+                })
+            
+            return mock_avatars
+            
+        start_time = time.time()
+        try:
+            params = {}
+            if avatar_ids:
+                params["avatar_ids"] = ",".join(avatar_ids)
+                
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get(
+                    f"{self.base_url_v2}/avatar/list",
+                    headers={"x-api-key": self.api_key},
+                    params=params
+                )
+                
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.info(
+                    "heygen_list_avatars_response",
+                    status_code=response.status_code,
+                    latency_ms=elapsed_ms
+                )
+                
+                if response.status_code == 429:
+                    raise ProviderRateLimitError("Heygen API rate limit exceeded")
+                elif response.status_code >= 500:
+                    raise TransientProviderError(f"Heygen API server error: {response.status_code}")
+                elif response.status_code >= 400:
+                    raise ProviderError(f"Heygen API error: {response.text}")
+                
+                result = response.json()
+                return result["data"]["avatars"]
+                
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError("Heygen API request timed out")
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"Heygen API request error: {str(e)}")
+
+    @backoff.on_exception(
+        backoff.expo,
+        (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
+        max_tries=5,
+        base=0.5,
+        factor=2,
+        jitter=backoff.full_jitter
+    )
+    def generate_avatar_video(
+        self, 
+        avatar_id: str, 
+        audio_url: str,
+        voice_id: Optional[str] = None,
+        text: Optional[str] = None,
+        script: Optional[Dict[str, Any]] = None,
+        background_image_url: Optional[str] = None,
+        background_video_url: Optional[str] = None,
+        voice_style: Optional[str] = None,
+        action_prompt: Optional[str] = None,
+        look: Optional[str] = None,
+        fps: int = 24,
+        aspect_ratio: str = "16:9"
+    ) -> str:
+        """
+        Generate a video using a photo avatar
+        
+        Args:
+            avatar_id: ID of the avatar to use
+            audio_url: URL of the audio file to use
+            voice_id: Optional Heygen voice ID (if text is provided)
+            text: Optional text to speak (if audio_url not provided)
+            script: Optional enhanced script with timing
+            background_image_url: Optional URL for background image
+            background_video_url: Optional URL for background video
+            voice_style: Optional voice style to apply
+            action_prompt: Optional action prompt
+            look: Optional look to apply (e.g., "professional", "casual")
+            fps: Frames per second
+            aspect_ratio: Video aspect ratio
+            
+        Returns:
+            task_id: ID of the generated video task
+        """
+        if self.mock_mode:
+            logger.info(
+                "heygen_mock_generate_avatar_video", 
+                avatar_id=avatar_id,
+                audio_url=audio_url,
+                voice_id=voice_id,
+                text=text,
+                script=script,
+                action_prompt=action_prompt
+            )
+            time.sleep(1)  # Simulate API call
+            
+            # Create deterministic job ID based on input for mock mode
+            avatar_hash = hash(avatar_id) % 1000
+            audio_hash = hash(audio_url) % 100 if audio_url else 0
+            text_hash = hash(text or "") % 10
+            
+            mock_id = f"mock-heygen-video-{avatar_hash:03d}-{audio_hash:02d}-{text_hash}-{int(time.time())}"
+            logger.info("heygen_mock_video_id_created", video_id=mock_id)
+            return mock_id
+        
+        start_time = time.time()
+        try:
+            # Prepare request payload
+            payload = {
+                "avatar": {
+                    "avatar_id": avatar_id
+                },
+                "output": {
+                    "fps": fps,
+                    "ratio": aspect_ratio,
+                    "resolution": "720p"
+                }
+            }
+            
+            # Add audio source (either audio_url or text+voice_id)
+            if audio_url:
+                payload["audio"] = {
+                    "audio_url": audio_url
+                }
+            elif text and voice_id:
+                payload["audio"] = {
+                    "text": text,
+                    "voice_id": voice_id
+                }
+                if voice_style:
+                    payload["audio"]["voice_style"] = voice_style
+            elif script:
+                payload["script"] = script
+            else:
+                raise ValueError("Either audio_url, text+voice_id, or script must be provided")
+            
+            # Add optional parameters
+            if background_image_url:
+                payload["background"] = {
+                    "image_url": background_image_url
+                }
+            elif background_video_url:
+                payload["background"] = {
+                    "video_url": background_video_url
+                }
+            
+            if action_prompt:
+                payload["action_prompt"] = action_prompt
+                
+            if look:
+                payload["avatar"]["look"] = look
+            
+            # Configure webhook callback if available
+            webhook_url = "https://api.yourdomain.com/api/v1/webhooks/heygen"
+            if webhook_url:
+                webhook_signature = hmac.new(
+                    self.webhook_secret.encode(),
+                    b"",  # This would typically be a unique identifier
+                    hashlib.sha256
+                ).hexdigest()
+                
+                payload["callback"] = {
+                    "url": webhook_url,
+                    "sign": webhook_signature
+                }
+                
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    f"{self.base_url_v2}/video/generate",
+                    headers={"x-api-key": self.api_key},
+                    json=payload
+                )
+                
+                elapsed_ms = (time.time() - start_time) * 1000
+                logger.info(
+                    "heygen_generate_avatar_video_response",
+                    status_code=response.status_code,
+                    latency_ms=elapsed_ms
+                )
+                
+                if response.status_code == 429:
+                    raise ProviderRateLimitError("Heygen API rate limit exceeded")
+                elif response.status_code >= 500:
+                    raise TransientProviderError(f"Heygen API server error: {response.status_code}")
+                elif response.status_code >= 400:
+                    raise ProviderError(f"Heygen API error: {response.text}")
+                
+                result = response.json()
+                return result["data"]["video_id"]
+                
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError("Heygen API request timed out")
+        except httpx.RequestError as e:
+            raise TransientProviderError(f"Heygen API request error: {str(e)}")
     
     @backoff.on_exception(
         backoff.expo,
@@ -160,11 +458,30 @@ class HeygenAdapter:
         
         start_time = time.time()
         try:
+            # Use the proper endpoint depending on the ID format
+            # For talking photo tasks, use /v1/tasks/{task_id}
+            # For avatar videos, use /v1/video_status.get?video_id={video_id}
+            endpoint = ""
+            params = {}
+            
+            if provider_job_id.startswith("task_"):
+                endpoint = f"{self.base_url}/tasks/{provider_job_id}"
+            else:
+                endpoint = f"{self.base_url}/video_status.get"
+                params = {"video_id": provider_job_id}
+            
             with httpx.Client(timeout=10.0) as client:
-                response = client.get(
-                    f"{self.base_url}/tasks/{provider_job_id}",
-                    headers={"x-api-key": self.api_key}
-                )
+                if params:
+                    response = client.get(
+                        endpoint,
+                        headers={"x-api-key": self.api_key},
+                        params=params
+                    )
+                else:
+                    response = client.get(
+                        endpoint,
+                        headers={"x-api-key": self.api_key}
+                    )
                 
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
@@ -182,16 +499,30 @@ class HeygenAdapter:
                     raise ProviderError(f"Heygen API error: {response.text}")
                 
                 result = response.json()
-                status_map = {
-                    "processing": "RUNNING",
-                    "success": "DONE",
-                    "failed": "ERROR"
-                }
                 
-                return {
-                    "status": status_map.get(result["status"], "RUNNING"),
-                    "video_url": result.get("video_url")
-                }
+                # Handle different response formats depending on the endpoint
+                if provider_job_id.startswith("task_"):
+                    status_map = {
+                        "processing": "RUNNING",
+                        "success": "DONE",
+                        "failed": "ERROR"
+                    }
+                    
+                    return {
+                        "status": status_map.get(result["status"], "RUNNING"),
+                        "video_url": result.get("video_url")
+                    }
+                else:
+                    status_map = {
+                        "processing": "RUNNING",
+                        "completed": "DONE",
+                        "failed": "ERROR"
+                    }
+                    
+                    return {
+                        "status": status_map.get(result["data"]["status"], "RUNNING"),
+                        "video_url": result["data"].get("video_url")
+                    }
                 
         except httpx.TimeoutException:
             raise ProviderTimeoutError("Heygen API request timed out")

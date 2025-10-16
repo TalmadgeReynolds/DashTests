@@ -8,6 +8,7 @@ class PresignKind(str, Enum):
     IMAGE = "IMAGE"
     AUDIO = "AUDIO"
     VIDEO = "VIDEO"
+    SCREENPLAY = "SCREENPLAY"
 
 
 class PresignRequest(BaseModel):

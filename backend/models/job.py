@@ -78,3 +78,31 @@ class Asset(Base):
     
     def __repr__(self):
         return f"<Asset id={self.id} kind={self.kind} job_id={self.job_id}>"
+
+
+class Screenplay(Base):
+    """Database model for uploaded screenplays"""
+    __tablename__ = "screenplays"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String, nullable=False)
+    filename = Column(String, nullable=False)
+    
+    # Storage URLs
+    pdf_url = Column(String, nullable=False)  # URL to the uploaded PDF file
+    
+    # Extracted text content from PDF
+    text_content = Column(Text, nullable=True)  # Full text extracted from PDF
+    
+    # Metadata
+    page_count = Column(Integer, nullable=True)
+    file_size_bytes = Column(Integer, nullable=True)
+    # meta field is defined in the migration but not used in the application
+    # meta = Column(JSON, nullable=True)  # Additional metadata like author, format info, etc.
+    
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Screenplay id={self.id} title={self.title}>"

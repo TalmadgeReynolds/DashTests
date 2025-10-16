@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, HttpUrl, validator
-from typing import List, Optional, Any, Dict, Literal
+from typing import List, Optional, Any, Dict, Literal, Union
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
@@ -25,6 +25,12 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=3, description="Text to synthesize")
     stability: float = Field(default=0.65, ge=0, le=1, description="Voice stability")
     similarity_boost: float = Field(default=0.75, ge=0, le=1, description="Voice similarity boost")
+    style: float = Field(default=0.0, ge=0, le=1, description="Style exaggeration")
+    speaker_boost: bool = Field(default=True, description="Speaker boost")
+    optimize_streaming_latency: int = Field(default=0, ge=0, le=4, description="Optimize streaming latency (0-4)")
+    model_id: str = Field(default="eleven_turbo_v2_5", description="TTS model ID")
+    output_format: str = Field(default="mp3_44100_128", description="Audio output format")
+    seed: Optional[int] = Field(None, description="Optional seed for reproducible results")
     pace: float = Field(default=1.0, ge=0.5, le=1.5, description="Speech pace")
 
 
@@ -37,9 +43,16 @@ class CreatePromptJobRequest(BaseModel):
     priority: Literal["high", "low"] = Field(default="low", description="Job processing priority")
 
 
+class HeygenAvatarRequest(BaseModel):
+    """Configuration for using a Heygen Photo Avatar"""
+    avatar_id: str = Field(..., description="ID of the avatar to use")
+    look: Optional[str] = Field(None, description="Optional avatar look (e.g., professional, casual)")
+
+
 class CreateAudioJobRequest(BaseModel):
     """Request body for creating an audio-driven job as defined in OpenAPI schema"""
-    image_url: HttpUrl = Field(..., description="URL of the image to animate")
+    image_url: Optional[HttpUrl] = Field(None, description="URL of the image to animate (for talking photo)")
+    avatar: Optional[HeygenAvatarRequest] = Field(None, description="Photo Avatar configuration (for avatar videos)")
     audio_url: Optional[HttpUrl] = Field(None, description="URL of the audio to use")
     tts: Optional[TTSRequest] = Field(None, description="Text-to-speech configuration")
     action_prompt: Optional[str] = Field(None, max_length=120, description="Action prompt for animation")
@@ -52,6 +65,13 @@ class CreateAudioJobRequest(BaseModel):
         """Validate that either audio_url or tts is provided"""
         if not values.get('audio_url') and not values.get('tts') and 'audio_url' in values and 'tts' in values:
             raise ValueError("Either audio_url or tts must be provided")
+        return v
+        
+    @validator('image_url', 'avatar')
+    def validate_image_source(cls, v, values):
+        """Validate that either image_url or avatar is provided"""
+        if not values.get('image_url') and not values.get('avatar') and 'image_url' in values and 'avatar' in values:
+            raise ValueError("Either image_url or avatar must be provided")
         return v
 
 

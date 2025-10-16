@@ -18,10 +18,19 @@ if config.attributes.get('configure_logger', True):
 # for 'autogenerate' support
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from backend.models.job import Base
 target_metadata = Base.metadata
+
+# Override sqlalchemy.url with DATABASE_URL from environment if available
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

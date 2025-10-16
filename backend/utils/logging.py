@@ -35,7 +35,11 @@ def setup_logging():
             structlog.processors.add_log_level,
             # Add caller info (file, line number)
             structlog.processors.CallsiteParameterAdder(
-                parameters={"filename", "lineno", "func_name"},
+                parameters=[
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                    structlog.processors.CallsiteParameter.FUNC_NAME,
+                ],
             ),
             # Format any exceptions
             structlog.processors.format_exc_info,

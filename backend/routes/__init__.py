@@ -1,1 +1,1 @@
-from . import lipsync, jobs, uploads, webhooks, prompts
+from . import lipsync, jobs, uploads, webhooks, prompts, voices
