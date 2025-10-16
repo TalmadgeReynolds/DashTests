@@ -26,8 +26,9 @@ export default function ScreenplayViewer({
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
   const [selectedText, setSelectedText] = useState('');
-  const [pdfUrl, setPdfUrl] = useState<string>(screenplay.pdf_url);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null); // Start with null instead of the raw S3 URL
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   
   const processTextMutation = useProcessTextSelection();
 
@@ -35,11 +36,19 @@ export default function ScreenplayViewer({
   useEffect(() => {
     async function getSignedUrl() {
       setLoading(true);
+      setError(null);
       try {
         const url = await getPresignedAccessUrl(screenplay.pdf_url);
-        setPdfUrl(url);
+        // Make sure we got a valid URL that contains the signature
+        if (url && url.includes('Signature=')) {
+          setPdfUrl(url);
+        } else {
+          setError('Invalid presigned URL received');
+          console.error('Invalid presigned URL:', url);
+        }
       } catch (error) {
         console.error('Failed to get presigned URL:', error);
+        setError('Failed to get access to the PDF');
       } finally {
         setLoading(false);
       }
@@ -103,8 +112,9 @@ export default function ScreenplayViewer({
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {loading && (
-        <div className="flex items-center justify-center p-4">
-          <p className="text-gray-500">Loading PDF...</p>
+        <div className="flex flex-col items-center justify-center p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Getting secure access to PDF...</p>
         </div>
       )}
       {/* Header */}
@@ -142,55 +152,77 @@ export default function ScreenplayViewer({
         onMouseUp={handleTextSelection}
       >
         <div className="flex justify-center">
-          <Document
-            file={pdfUrl}
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={
-              <div className="flex items-center justify-center p-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-              </div>
-            }
-            error={
-              <div className="p-8 text-center">
-                <p className="text-red-600">Failed to load PDF</p>
-                <p className="text-sm text-gray-600 mt-2">This could be due to insufficient permissions or missing file.</p>
-              </div>
-            }
-          >
-            <Page
-              pageNumber={pageNumber}
-              scale={scale}
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
-              className="shadow-lg"
-            />
-          </Document>
+          {loading && (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+          )}
+          
+          {!loading && error && (
+            <div className="p-8 text-center">
+              <p className="text-red-600">Failed to load PDF</p>
+              <p className="text-sm text-gray-600 mt-2">{error}</p>
+              <button 
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={() => window.location.reload()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          
+          {!loading && !error && pdfUrl && (
+            <Document
+              file={pdfUrl}
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={
+                <div className="flex items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                </div>
+              }
+              error={
+                <div className="p-8 text-center">
+                  <p className="text-red-600">Failed to load PDF</p>
+                  <p className="text-sm text-gray-600 mt-2">This could be due to insufficient permissions or missing file.</p>
+                </div>
+              }
+            >
+              <Page
+                pageNumber={pageNumber}
+                scale={scale}
+                renderTextLayer={true}
+                renderAnnotationLayer={true}
+                className="shadow-lg"
+              />
+            </Document>
+          )}
         </div>
       </div>
 
       {/* Footer Controls */}
-      <div className="px-4 py-3 bg-white border-t border-gray-200">
-        <div className="flex items-center justify-between">
-          {/* Page Navigation */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={goToPrevPage}
-              disabled={pageNumber <= 1}
-              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-gray-700">
-              Page {pageNumber} of {numPages || '?'}
-            </span>
-            <button
-              onClick={goToNextPage}
-              disabled={pageNumber >= (numPages || 1)}
-              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
+      {!loading && !error && pdfUrl && (
+        <div className="px-4 py-3 bg-white border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            {/* Page Navigation */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={goToPrevPage}
+                disabled={pageNumber <= 1}
+                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-700">
+                Page {pageNumber} of {numPages || '?'}
+              </span>
+              <button
+                onClick={goToNextPage}
+                disabled={pageNumber >= (numPages || 1)}
+                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
 
           {/* Selection Actions */}
           <div className="flex items-center gap-3">
@@ -209,6 +241,7 @@ export default function ScreenplayViewer({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
