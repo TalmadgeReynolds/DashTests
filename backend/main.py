@@ -16,8 +16,8 @@ from .utils.prometheus import (
 )
 from .exceptions import LipSyncException, ProviderError
 from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars
-# Use mock implementation for prompts
-from .routes import prompts_mock as prompts
+# Use real implementation for prompts since we have API keys
+from .routes import prompts
 from .routes.websockets import setup_socketio
 from .routes import websocket_test
 

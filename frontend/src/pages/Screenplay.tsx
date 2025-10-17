@@ -8,7 +8,13 @@ import { useScreenplays, useScreenplay, useDeleteScreenplay } from '@/hooks/useS
 import ScreenplayViewer from '@/components/screenplay/ScreenplayViewer';
 import ScreenplayUpload from '@/components/screenplay/ScreenplayUpload';
 import { apiClient } from '@/lib/api-client';
-import type { PromptSharpenRequest, PromptSharpenResponse, PromptVariant } from '@/types';
+import type { 
+  PromptSharpenRequest, 
+  PromptSharpenResponse, 
+  PromptVariant,
+  EmphasisLayer,
+  CreativeElement 
+} from '@/types';
 
 export default function Screenplay() {
   const [selectedScreenplayId, setSelectedScreenplayId] = useState<string | null>(null);
@@ -38,6 +44,14 @@ export default function Screenplay() {
     }
   };
 
+  const [structuredMode, setStructuredMode] = useState(false);
+  const [selectedEmphasis, setSelectedEmphasis] = useState<EmphasisLayer[]>([]);
+  const [showElementsView, setShowElementsView] = useState(false);
+  
+  // Keep the original emphasis values as is - the backend expects lowercase values
+  // The emphasis layers are already matching the backend's expected values
+  // So we don't need this conversion function anymore
+  
   const handleSharpenPrompt = useCallback(async () => {
     if (!selectedPrompt) return;
     
@@ -45,21 +59,75 @@ export default function Screenplay() {
       setIsSharpening(true);
       setSharpenedPrompts(null);
       setSelectedVariant(null);
+      setShowElementsView(false);
       
+      // Create a clean request object with only the necessary fields
+      // This avoids sending unnecessary fields that might cause validation issues
       const request: PromptSharpenRequest = {
-        original: selectedPrompt, // Changed from 'prompt' to 'original'
+        original: selectedPrompt,
         model: 'both',
-        variants: 3, // Changed from 'num_variants' to 'variants'
+        variants: 3,
         temperature: 0.3,
-        max_tokens: 300
+        max_tokens: structuredMode ? 500 : 300,
+        structured: structuredMode
       };
       
-      const response = await apiClient.sharpenPrompt(request);
-      setSharpenedPrompts(response);
+      // Only add emphasis if structuredMode is true AND there are selected emphasis layers
+      if (structuredMode && selectedEmphasis.length > 0) {
+        request.emphasis = selectedEmphasis;
+      }
       
-      // Automatically select the best variant (the variants are already sorted by score)
-      if (response.variants.length > 0) {
-        setSelectedVariant(response.variants[0]);
+      console.log("Sending sharpen request:", JSON.stringify(request, null, 2));
+      
+      try {
+        const response = await apiClient.sharpenPrompt(request);
+        console.log("Received sharpen response:", JSON.stringify(response, null, 2));
+        setSharpenedPrompts(response);
+        
+        // Automatically select the best variant (the variants are already sorted by score)
+        if (response.variants.length > 0) {
+          setSelectedVariant(response.variants[0]);
+          
+          // If in structured mode and elements are available, show elements view
+          if (structuredMode && response.variants[0].elements) {
+            setShowElementsView(true);
+          }
+        }
+      } catch (apiError: unknown) {
+        console.error("API Error Details:", apiError);
+        
+        // Try to handle specific validation errors for better UX
+        const errorMessage = apiError instanceof Error ? apiError.message : 'Unknown error';
+        
+        if (errorMessage.includes('max_tokens')) {
+          // We have a token limit issue
+          const newRequest = {
+            ...request,
+            max_tokens: 400 // Try with a lower token count
+          };
+          
+          try {
+            console.log("Retrying with lower token count:", newRequest);
+            const response = await apiClient.sharpenPrompt(newRequest);
+            console.log("Retry successful:", response);
+            setSharpenedPrompts(response);
+            
+            if (response.variants.length > 0) {
+              setSelectedVariant(response.variants[0]);
+              
+              if (structuredMode && response.variants[0].elements) {
+                setShowElementsView(true);
+              }
+            }
+            return; // Early return on successful retry
+          } catch (retryError) {
+            console.error("Retry also failed:", retryError);
+            // Continue to general error handling
+          }
+        }
+        
+        alert(`Failed to sharpen prompt: ${errorMessage}`);
+        // Don't rethrow, let the outer catch handle cleanup
       }
     } catch (error) {
       console.error('Failed to sharpen prompt:', error);
@@ -67,12 +135,19 @@ export default function Screenplay() {
     } finally {
       setIsSharpening(false);
     }
-  }, [selectedPrompt]);
+  }, [selectedPrompt, structuredMode, selectedEmphasis]);
   
   const handleSelectVariant = useCallback((variant: PromptVariant) => {
     setSelectedVariant(variant);
-    setSelectedPrompt(variant.text);
-  }, []);
+    
+    // If we're in structured mode and the variant has a model_optimized field, use that for the prompt
+    if (structuredMode && variant.model_optimized) {
+      setSelectedPrompt(variant.model_optimized);
+    } else {
+      // Otherwise use the regular text
+      setSelectedPrompt(variant.text);
+    }
+  }, [structuredMode]);
   
   const handleResetSharpening = useCallback(() => {
     setSharpenedPrompts(null);
@@ -228,8 +303,9 @@ export default function Screenplay() {
             />
             
             {selectedPrompt && (
-              <div className="mt-4 flex gap-2">
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex-1">
+              <div className="mt-4 space-y-3">
+                {/* Stats */}
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-900">
                     <strong>Characters:</strong> {selectedPrompt.length}
                   </p>
@@ -237,13 +313,112 @@ export default function Screenplay() {
                     <strong>Words:</strong> {selectedPrompt.split(/\s+/).filter(w => w).length}
                   </p>
                 </div>
-                <button
-                  onClick={handleSharpenPrompt}
-                  disabled={isSharpening || !selectedPrompt || selectedPrompt.length < 10}
-                  className="px-3 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0 text-sm"
-                >
-                  {isSharpening ? 'Sharpening...' : '✨ Sharpen'}
-                </button>
+                
+                {/* Structured Mode Toggle */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-start">
+                    <div>
+                      <p className="font-medium text-sm">Structured Mode</p>
+                      <p className="text-xs text-gray-500">Deconstruct text into creative elements</p>
+                    </div>
+                    <div className="relative ml-2 group">
+                      <svg className="w-4 h-4 text-gray-500 cursor-help" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      <div className="absolute left-0 top-full mt-2 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        <p>Structured Mode analyzes your text and extracts key creative elements:</p>
+                        <ul className="mt-1 ml-3 list-disc">
+                          <li>Characters & traits</li>
+                          <li>Actions & movements</li>
+                          <li>Expressions & emotions</li>
+                          <li>Camera & framing</li>
+                          <li>Location & atmosphere</li>
+                          <li>Art direction & style</li>
+                        </ul>
+                        <p className="mt-1">It creates both human-readable and model-optimized prompts for better AI generation.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={structuredMode}
+                      onChange={() => setStructuredMode(!structuredMode)} 
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+                
+                {/* Sharpen Layers */}
+                {structuredMode && (
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex items-center mb-2">
+                      <p className="font-medium text-sm">Emphasis Layers</p>
+                      <div className="relative ml-2 group">
+                        <svg className="w-4 h-4 text-gray-500 cursor-help" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        <div className="absolute left-0 top-full mt-2 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                          <p className="font-medium">Emphasis layers control what aspects get enhanced:</p>
+                          <ul className="mt-1 ml-3 list-disc">
+                            <li><span className="font-medium text-emerald-300">Descriptive</span>: Physical details, appearances, textures</li>
+                            <li><span className="font-medium text-emerald-300">Dynamic</span>: Motion, action, energy, movement</li>
+                            <li><span className="font-medium text-emerald-300">Cinematic</span>: Camera angles, lighting, composition</li>
+                            <li><span className="font-medium text-emerald-300">Conceptual</span>: Symbolism, themes, emotions</li>
+                          </ul>
+                          <p className="mt-1">Select multiple layers to balance different aspects.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(['descriptive', 'dynamic', 'cinematic', 'conceptual'] as EmphasisLayer[]).map((layer) => {
+                        const tooltips = {
+                          descriptive: "Enhances visual details and appearances",
+                          dynamic: "Emphasizes movement and action",
+                          cinematic: "Focuses on camera work and composition",
+                          conceptual: "Highlights themes and emotional meaning"
+                        };
+                        
+                        return (
+                          <div key={layer} className="relative group">
+                            <button
+                              onClick={() => {
+                                if (selectedEmphasis.includes(layer)) {
+                                  setSelectedEmphasis(selectedEmphasis.filter(e => e !== layer));
+                                } else {
+                                  setSelectedEmphasis([...selectedEmphasis, layer]);
+                                }
+                              }}
+                              className={`px-2 py-1 rounded text-xs font-medium capitalize ${
+                                selectedEmphasis.includes(layer) 
+                                  ? 'bg-emerald-600 text-white' 
+                                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              {layer}
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-40 p-1 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                              {tooltips[layer as keyof typeof tooltips]}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Select layers to emphasize in the prompt</p>
+                  </div>
+                )}
+                
+                {/* Sharpen Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSharpenPrompt}
+                    disabled={isSharpening || !selectedPrompt || selectedPrompt.length < 10}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                  >
+                    {isSharpening ? 'Sharpening...' : `✨ ${structuredMode ? 'Analyze & Sharpen' : 'Sharpen'}`}
+                  </button>
+                </div>
               </div>
             )}
             
@@ -252,15 +427,25 @@ export default function Screenplay() {
               <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-3">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="font-medium text-gray-900">Sharpened Prompts</h3>
-                  <button 
-                    onClick={handleResetSharpening}
-                    className="text-xs text-gray-500 hover:text-gray-700"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {structuredMode && (
+                      <button
+                        onClick={() => setShowElementsView(!showElementsView)}
+                        className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100"
+                      >
+                        {showElementsView ? "Show Text View" : "Show Elements View"}
+                      </button>
+                    )}
+                    <button 
+                      onClick={handleResetSharpening}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
                 
-                <div className="space-y-3 max-h-60 overflow-y-auto">
+                <div className="space-y-3 max-h-80 overflow-y-auto">
                   {sharpenedPrompts.variants.map((variant, idx) => (
                     <div 
                       key={idx}
@@ -275,14 +460,85 @@ export default function Screenplay() {
                           Similarity: {Math.round(variant.similarity * 100)}%
                         </span>
                       </div>
-                      <p className="text-sm text-gray-800">{variant.text}</p>
-                      {variant.diff && (
-                        <details className="mt-1">
-                          <summary className="text-xs text-blue-600 cursor-pointer">View changes</summary>
-                          <div className="mt-1 text-xs bg-gray-50 p-2 rounded">
-                            <pre className="whitespace-pre-wrap">{variant.diff}</pre>
+                      
+                      {/* Structured Elements View */}
+                      {structuredMode && showElementsView && variant.elements && (
+                        <div className="mt-2 space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(variant.elements).map(([key, value]) => {
+                              if (!value) return null;
+                              
+                              // Define colors for different element types
+                              const elementColors: Record<string, {bg: string, border: string, text: string}> = {
+                                character: {bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800'},
+                                action: {bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800'},
+                                expression: {bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800'},
+                                camera: {bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800'},
+                                location: {bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800'},
+                                art_direction: {bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800'},
+                                dialogue: {bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800'},
+                                context: {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-800'},
+                              };
+                              
+                              const colors = elementColors[key] || {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700'};
+                              
+                              return (
+                                <div key={key} className={`${colors.bg} p-2 rounded border ${colors.border}`}>
+                                  <p className={`text-xs font-medium ${colors.text} capitalize flex items-center`}>
+                                    {key.replace('_', ' ')}
+                                  </p>
+                                  <p className="text-sm mt-1">{value}</p>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </details>
+                          
+                          {variant.model_optimized && (
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs font-medium text-gray-700">Model-Optimized Version</p>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(variant.model_optimized || '');
+                                  }}
+                                  className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                              <div className="bg-blue-50 text-sm p-2 rounded border border-blue-200">
+                                {variant.model_optimized}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Text View */}
+                      {(!structuredMode || !showElementsView || !variant.elements) && (
+                        <>
+                          <div className="flex justify-between items-start">
+                            <p className="text-sm text-gray-800 flex-1">{variant.text}</p>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(variant.text);
+                              }}
+                              className="ml-2 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200 flex-shrink-0"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          {variant.diff && (
+                            <details className="mt-1">
+                              <summary className="text-xs text-blue-600 cursor-pointer">View changes</summary>
+                              <div className="mt-1 text-xs bg-gray-50 p-2 rounded">
+                                <pre className="whitespace-pre-wrap">{variant.diff}</pre>
+                              </div>
+                            </details>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}

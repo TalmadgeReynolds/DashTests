@@ -82,12 +82,27 @@ export interface CreateJobRequest {
   use_topaz?: boolean;
 }
 
+export interface CreativeElement {
+  character?: string; // Who is present, traits, emotion, wardrobe, role
+  action?: string; // What characters are doing, physical movement, gestures
+  expression?: string; // Mood, tone, energy in the scene
+  camera?: string; // Framing, motion, shot style
+  location?: string; // Where the scene takes place, atmosphere, time, lighting
+  art_direction?: string; // Cinematic style, color palette, lens type
+  dialogue?: string; // Spoken text or narrative meaning
+  context?: string; // Implicit cues, subtext, symbolism
+}
+
+export type EmphasisLayer = 'descriptive' | 'dynamic' | 'cinematic' | 'conceptual';
+
 export interface PromptSharpenRequest {
   original: string;
   model: 'gpt' | 'claude' | 'both';
-  variants?: number;
-  temperature?: number;
-  max_tokens?: number;
+  variants?: number; // Between 1 and 6
+  temperature?: number; // Between 0.0 and 1.0
+  max_tokens?: number; // Between 50 and 500
+  structured: boolean;
+  emphasis?: EmphasisLayer[]; // Only sent when structured is true
 }
 
 export interface PromptVariant {
@@ -96,6 +111,8 @@ export interface PromptVariant {
   score: number; // Overall quality score (0-1)
   similarity: number; // Semantic similarity to original (0-1)
   diff: string; // Human-readable diff showing changes
+  elements?: CreativeElement; // Structured creative elements
+  model_optimized?: string; // Version optimized for generation models
 }
 
 export interface PromptSharpenResponse {

@@ -109,11 +109,18 @@ EOF
     fi
     
     # Load environment variables
-    echo_info "Loading environment variables..."
-    set -a
-    source .env
-    set +a
-    echo_success "Environment loaded"
+echo_info "Loading environment variables..."
+export $(grep -v '^#' .env 2>/dev/null | xargs) || true
+# Explicitly set API keys if they're not set
+if [ -z "$OPENAI_API_KEY" ]; then
+  export OPENAI_API_KEY=$(grep "^OPENAI_API_KEY=" .env | cut -d= -f2-)
+  echo_info "Set OpenAI API key from .env file"
+fi
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+  export ANTHROPIC_API_KEY=$(grep "^ANTHROPIC_API_KEY=" .env | cut -d= -f2-)
+  echo_info "Set Anthropic API key from .env file"
+fi
+echo_success "Environment loaded"
 }
 
 ###############################################################################
