@@ -10,6 +10,9 @@ import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { getPresignedAccessUrl } from '@/lib/s3-utils';
 
+// Custom styles for text selection
+import './screenplay-viewer.css';
+
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -29,6 +32,7 @@ export default function ScreenplayViewer({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null); // Start with null instead of the raw S3 URL
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
   
   const processTextMutation = useProcessTextSelection();
 
@@ -61,7 +65,23 @@ export default function ScreenplayViewer({
     setNumPages(numPages);
   };
 
-  const handleTextSelection = useCallback(() => {
+  const handleMouseDown = useCallback(() => {
+    setIsSelecting(true);
+  }, []);
+
+  const handleMouseMove = useCallback(() => {
+    if (isSelecting) {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+      
+      if (text && text.length > 0) {
+        setSelectedText(text);
+      }
+    }
+  }, [isSelecting]);
+  
+  const handleMouseUp = useCallback(() => {
+    setIsSelecting(false);
     const selection = window.getSelection();
     const text = selection?.toString().trim();
     
@@ -149,7 +169,9 @@ export default function ScreenplayViewer({
       {/* PDF Viewer */}
       <div
         className="flex-1 overflow-auto p-4"
-        onMouseUp={handleTextSelection}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
       >
         <div className="flex justify-center">
           {loading && (
@@ -203,21 +225,30 @@ export default function ScreenplayViewer({
       {!loading && !error && pdfUrl && (
         <div className="px-4 py-3 bg-white border-t border-gray-200">
           <div className="flex flex-col space-y-3">
-            {/* Generate Talking Head Button - Now at Bottom Left */}
+            {/* Text Selection Actions */}
             <div className="flex items-center gap-3">
               {selectedText && (
-                <button
-                  onClick={handleUseSelection}
-                  disabled={!selectedText || processTextMutation.isPending}
-                  className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
-                >
-                  {processTextMutation.isPending ? 'Processing...' : 'Generate Talking Head'}
-                </button>
-              )}
-              {selectedText && (
-                <span className="text-xs text-gray-600">
-                  {selectedText.length} characters selected
-                </span>
+                <>
+                  <button
+                    onClick={() => onTextSelected?.(selectedText, selectedText)}
+                    disabled={!selectedText}
+                    className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+                  >
+                    Send to Prompt
+                  </button>
+                  
+                  <button
+                    onClick={handleUseSelection}
+                    disabled={!selectedText || processTextMutation.isPending}
+                    className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+                  >
+                    {processTextMutation.isPending ? 'Processing...' : 'Generate Talking Head'}
+                  </button>
+                  
+                  <span className="text-xs text-gray-600">
+                    {selectedText.length} characters selected
+                  </span>
+                </>
               )}
             </div>
             

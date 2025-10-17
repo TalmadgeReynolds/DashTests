@@ -28,8 +28,14 @@ export default function Screenplay() {
     setSelectedScreenplayId(screenplayId);
   };
 
-  const handleTextSelected = (_: string, processedPrompt: string) => {
+  const handleTextSelected = (_selectedText: string, processedPrompt: string) => {
+    // Update the prompt with the processed text
     setSelectedPrompt(processedPrompt);
+    // If sharpened prompts were visible, clear them when new text is selected
+    if (sharpenedPrompts) {
+      setSharpenedPrompts(null);
+      setSelectedVariant(null);
+    }
   };
 
   const handleSharpenPrompt = useCallback(async () => {
