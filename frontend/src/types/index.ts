@@ -129,3 +129,19 @@ export interface CostEstimate {
   total_cost: number;
   estimated_duration?: number;
 }
+
+// Export prompt sharpening types
+export * from './prompt';
+
+// Export Topaz types
+export type {
+  TopazSettings,
+  TopazFilter,
+  Resolution,
+  ColorGrading,
+  TopazModel,
+  AudioCodec,
+  AudioTransfer,
+  CompressionLevel,
+  VideoContainer
+} from './topaz';

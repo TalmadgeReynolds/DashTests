@@ -15,14 +15,21 @@ from .utils.prometheus import (
     provider_latency_ms, postfx_runtime_s
 )
 from .exceptions import LipSyncException, ProviderError
-from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars
-# Use real implementation for prompts since we have API keys
-from .routes import prompts
+from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars, enhancement
 from .routes.websockets import setup_socketio
 from .routes import websocket_test
 
+# Initialize settings and logger first
 settings = get_settings()
 logger = get_logger("app")
+
+# Conditionally import real or mock prompts implementation
+if settings.MOCK_PROVIDERS:
+    from .routes import prompts_mock as prompts
+    logger.info("Using mock implementation for prompts")
+else:
+    from .routes import prompts
+    logger.info("Using real implementation for prompts")
 
 
 @asynccontextmanager
@@ -178,6 +185,22 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Import all route modules
+from .routes import (
+    lipsync,
+    jobs,
+    uploads,
+    webhooks,
+    prompts,
+    screenplay,
+    images,
+    voices,
+    avatars,
+    websocket_test,
+    access,
+    enhancement
+)
+
 # Mount API routes
 app.include_router(lipsync.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
@@ -189,10 +212,8 @@ app.include_router(images.router, prefix="/api/v1")
 app.include_router(voices.router, prefix="/api/v1")
 app.include_router(avatars.router, prefix="/api/v1")
 app.include_router(websocket_test.router, prefix="/api/v1")
-
-# Import our new access routes
-from .routes import access
 app.include_router(access.router, prefix="/api/v1")
+app.include_router(enhancement.router, prefix="/api/v1")
 
 # Set up WebSocket (Socket.IO) support
 setup_socketio(app)

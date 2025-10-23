@@ -7,7 +7,8 @@ import {
   BookmarkIcon, 
   DocumentDuplicateIcon,
   DocumentTextIcon,
-  Cog6ToothIcon 
+  Cog6ToothIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { to: '/jobs', icon: FolderIcon, label: 'Jobs' },
   { to: '/create', icon: PlusCircleIcon, label: 'Create' },
   { to: '/screenplay', icon: DocumentTextIcon, label: 'Script' },
+  { to: '/enhancement', icon: SparklesIcon, label: 'Enhance' },
   { to: '/library', icon: BookmarkIcon, label: 'Library' },
   { to: '/batch', icon: DocumentDuplicateIcon, label: 'Batch' },
   { to: '/settings', icon: Cog6ToothIcon, label: 'Settings' },

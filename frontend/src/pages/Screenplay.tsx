@@ -12,8 +12,7 @@ import type {
   PromptSharpenRequest, 
   PromptSharpenResponse, 
   PromptVariant,
-  EmphasisLayer,
-  CreativeElement 
+  EmphasisLayer
 } from '@/types';
 
 export default function Screenplay() {
@@ -56,6 +55,8 @@ export default function Screenplay() {
   const [structuredMode, setStructuredMode] = useState(false);
   const [selectedEmphasis, setSelectedEmphasis] = useState<EmphasisLayer[]>([]);
   const [showElementsView, setShowElementsView] = useState(false);
+  const [variantCount, setVariantCount] = useState<number>(3); // Default to 3 variants
+  const [showComparison, setShowComparison] = useState<boolean>(false);
   
   // Keep the original emphasis values as is - the backend expects lowercase values
   // The emphasis layers are already matching the backend's expected values
@@ -75,7 +76,7 @@ export default function Screenplay() {
       const request: PromptSharpenRequest = {
         original: selectedPrompt,
         model: 'both',
-        variants: 3,
+        variants: variantCount,
         temperature: 0.3,
         max_tokens: structuredMode ? 500 : 300,
         structured: structuredMode
@@ -140,7 +141,7 @@ export default function Screenplay() {
     } finally {
       setIsSharpening(false);
     }
-  }, [selectedPrompt, structuredMode, selectedEmphasis]);
+  }, [selectedPrompt, structuredMode, selectedEmphasis, variantCount]);
   
   const handleSelectVariant = useCallback((variant: PromptVariant) => {
     setSelectedVariant(variant);
@@ -265,9 +266,9 @@ export default function Screenplay() {
             <h2 className="text-lg font-medium text-gray-900 px-2 mb-3">Screenplays</h2>
             {isLoading ? (
               <div className="p-4 text-center">Loading...</div>
-            ) : screenplayList && screenplayList.length > 0 ? (
+            ) : screenplayList && screenplayList.screenplays.length > 0 ? (
               <ul className="space-y-1">
-                {screenplayList.map(screenplay => (
+                {screenplayList.screenplays.map(screenplay => (
                   <li key={screenplay.id}>
                     <button
                       onClick={() => setSelectedScreenplayId(screenplay.id)}
@@ -279,17 +280,17 @@ export default function Screenplay() {
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-medium truncate">{screenplay.title}</span>
-                        <button
+                        <div
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteScreenplay(screenplay.id);
                           }}
-                          className="text-gray-400 hover:text-red-600 ml-2"
+                          className="text-gray-400 hover:text-red-600 ml-2 cursor-pointer"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                             <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                           </svg>
-                        </button>
+                        </div>
                       </div>
                     </button>
                   </li>
@@ -415,6 +416,29 @@ export default function Screenplay() {
                   </span>
                 </div>
                 
+                {/* Variant Count Selector */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Variant Count: {variantCount}
+                  </label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="6" 
+                    value={variantCount}
+                    onChange={(e) => setVariantCount(parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>1</span>
+                    <span>2</span>
+                    <span>3</span>
+                    <span>4</span>
+                    <span>5</span>
+                    <span>6</span>
+                  </div>
+                </div>
+                
                 {/* Emphasis Selection for Structured Mode */}
                 {structuredMode && (
                   <div className="mt-4">
@@ -459,6 +483,7 @@ export default function Screenplay() {
                   </div>
                 )}
                 
+                
                 {/* Sharpen Button */}
                 <div className="flex justify-end">
                   <button
@@ -490,117 +515,185 @@ export default function Screenplay() {
                         {showElementsView ? 'Hide Elements' : 'Show Elements'}
                       </button>
                     )}
+                    <button
+                      onClick={() => setShowComparison(!showComparison)}
+                      className={`px-2 py-1 text-xs rounded border ${
+                        showComparison 
+                          ? 'bg-blue-100 border-blue-200 text-blue-800' 
+                          : 'bg-gray-100 border-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {showComparison ? 'Hide Comparison' : 'Compare Variants'}
+                    </button>
                   </div>
                 </div>
                 
-                <div className="space-y-4">
-                  {sharpenedPrompts.variants.map((variant, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 border rounded-lg cursor-pointer ${
-                        selectedVariant?.text === variant.text
-                          ? 'bg-blue-50 border-blue-200'
-                          : 'bg-white border-gray-200 hover:bg-gray-50'
-                      }`}
-                      onClick={() => handleSelectVariant(variant)}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium">Variant {idx + 1}</span>
-                          {variant.score && (
-                            <span className={`ml-2 px-1.5 py-0.5 text-xs rounded ${
-                              variant.score > 0.7 ? 'bg-green-100 text-green-800' : 
-                              variant.score > 0.5 ? 'bg-yellow-100 text-yellow-800' : 
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              Score: {Math.round(variant.score * 100)}
-                            </span>
-                          )}
-                        </div>
+                {/* Display mode - either comparison or normal view */}
+                {showComparison ? (
+                  // Comparison View
+                  <div className="space-y-4">
+                    <div className="bg-gray-100 border border-gray-300 p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-medium">Original Prompt</h4>
                         <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(variant.text);
-                          }}
-                          className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200"
+                          onClick={() => navigator.clipboard.writeText(sharpenedPrompts.original)}
+                          className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded border border-gray-300 transition-colors"
                         >
                           Copy
                         </button>
                       </div>
-                      
-                      {/* Text or Elements View */}
-                      {structuredMode && showElementsView && selectedVariant?.text === variant.text && variant.elements ? (
-                        <>
-                          {/* Structured Elements View */}
-                          <div className="mt-2 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              {Object.entries(variant.elements).map(([key, value]) => {
-                                if (!value) return null;
-                                
-                                // Define colors for different element types
-                                const elementColors: Record<string, {bg: string, border: string, text: string}> = {
-                                  character: {bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800'},
-                                  action: {bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800'},
-                                  expression: {bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800'},
-                                  camera: {bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800'},
-                                  location: {bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800'},
-                                  art_direction: {bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800'},
-                                  dialogue: {bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800'},
-                                  context: {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-800'},
-                                };
-                                
-                                const colors = elementColors[key] || {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700'};
-                                
-                                return (
-                                  <div key={key} className={`${colors.bg} p-2 rounded border ${colors.border}`}>
-                                    <p className={`text-xs font-medium ${colors.text} capitalize flex items-center`}>
-                                      {key.replace('_', ' ')}
-                                    </p>
-                                    <p className="text-sm mt-1">{value}</p>
-                                  </div>
-                                );
-                              })}
+                      <div className="text-sm whitespace-pre-wrap bg-white p-3 border border-gray-200 rounded">{sharpenedPrompts.original}</div>
+                    </div>
+                    
+                    <h4 className="font-medium text-gray-800">Generated Variants ({sharpenedPrompts.variants.length})</h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {sharpenedPrompts.variants.map((variant, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                            selectedVariant?.text === variant.text
+                            ? 'bg-blue-50 border-blue-300 shadow-sm'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                          }`}
+                          onClick={() => handleSelectVariant(variant)}
+                        >
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center">
+                              <span className="text-sm font-medium">Variant {idx + 1}</span>
+                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                                Score: {Math.round(variant.score * 100)}
+                              </span>
+                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                                {variant.source}
+                              </span>
                             </div>
-                            
-                            {variant.model_optimized && (
-                              <div className="mt-3">
-                                <div className="flex items-center justify-between mb-1">
-                                  <p className="text-xs font-medium text-gray-700">Model-Optimized Version</p>
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigator.clipboard.writeText(variant.model_optimized || '');
-                                    }}
-                                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200"
-                                  >
-                                    Copy
-                                  </button>
-                                </div>
-                                <div className="bg-blue-50 text-sm p-2 rounded border border-blue-200">
-                                  {variant.model_optimized}
-                                </div>
-                              </div>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(variant.text);
+                              }}
+                              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <div className="text-sm mt-2 whitespace-pre-wrap bg-white p-3 border border-gray-200 rounded">{variant.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  // Normal view
+                  <div className="space-y-4">
+                    {sharpenedPrompts.variants.map((variant, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-3 border rounded-lg cursor-pointer ${
+                          selectedVariant?.text === variant.text
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                        onClick={() => handleSelectVariant(variant)}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="flex items-center">
+                            <span className="text-sm font-medium">Variant {idx + 1}</span>
+                            {variant.score && (
+                              <span className={`ml-2 px-1.5 py-0.5 text-xs rounded ${
+                                variant.score > 0.7 ? 'bg-green-100 text-green-800' : 
+                                variant.score > 0.5 ? 'bg-yellow-100 text-yellow-800' : 
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                Score: {Math.round(variant.score * 100)}
+                              </span>
                             )}
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-sm mt-2">
-                            <p>{variant.text}</p>
-                          </div>
-                          {variant.diff && (
-                            <details className="mt-1">
-                              <summary className="text-xs text-blue-600 cursor-pointer">View changes</summary>
-                              <div className="mt-1 text-xs bg-gray-50 p-2 rounded">
-                                <pre className="whitespace-pre-wrap">{variant.diff}</pre>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(variant.text);
+                            }}
+                            className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        
+                        {/* Text or Elements View */}
+                        {structuredMode && showElementsView && selectedVariant?.text === variant.text && variant.elements ? (
+                          <>
+                            {/* Structured Elements View */}
+                            <div className="mt-2 space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(variant.elements).map(([key, value]) => {
+                                  if (!value) return null;
+                                  
+                                  // Define colors for different element types
+                                  const elementColors: Record<string, {bg: string, border: string, text: string}> = {
+                                    character: {bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800'},
+                                    action: {bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800'},
+                                    expression: {bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800'},
+                                    camera: {bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800'},
+                                    location: {bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800'},
+                                    art_direction: {bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800'},
+                                    dialogue: {bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800'},
+                                    context: {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-800'},
+                                  };
+                                  
+                                  const colors = elementColors[key] || {bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700'};
+                                  
+                                  return (
+                                    <div key={key} className={`${colors.bg} p-2 rounded border ${colors.border}`}>
+                                      <p className={`text-xs font-medium ${colors.text} capitalize flex items-center`}>
+                                        {key.replace('_', ' ')}
+                                      </p>
+                                      <p className="text-sm mt-1">{value}</p>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            </details>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                              
+                              {variant.model_optimized && (
+                                <div className="mt-3">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="text-xs font-medium text-gray-700">Model-Optimized Version</p>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(variant.model_optimized || '');
+                                      }}
+                                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded border border-gray-200"
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                  <div className="bg-blue-50 text-sm p-2 rounded border border-blue-200">
+                                    {variant.model_optimized}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm mt-2">
+                              <p>{variant.text}</p>
+                            </div>
+                            {variant.diff && (
+                              <details className="mt-1">
+                                <summary className="text-xs text-blue-600 cursor-pointer">View changes</summary>
+                                <div className="mt-1 text-xs bg-gray-50 p-2 rounded">
+                                  <pre className="whitespace-pre-wrap">{variant.diff}</pre>
+                                </div>
+                              </details>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

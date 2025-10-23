@@ -36,13 +36,9 @@ echo "Your current public IP is: $CURRENT_IP"
 
 # Get AWS region from .env file if possible
 AWS_REGION="us-east-1" # Default to us-east-1 where RDS is typically located
-if [ -f "$ENV_FILE" ]; then
-  REGION_FROM_ENV=$(grep "AWS_REGION" "$ENV_FILE" | head -1 | cut -d '=' -f2)
-  if [ ! -z "$REGION_FROM_ENV" ]; then
-    AWS_REGION=$REGION_FROM_ENV
-    echo "Using AWS region from .env: $AWS_REGION"
-  fi
-fi
+# Force us-east-1 as the region for this script
+AWS_REGION="us-east-1"
+echo "Using AWS region: $AWS_REGION"
 
 # Add rule for PostgreSQL access from your current IP
 aws ec2 authorize-security-group-ingress \
