@@ -1,10 +1,44 @@
-import { useState, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { Button } from '@/components/ui/Button';
 import { apiClient } from '@/lib/api-client';
+import { logger } from '@/lib/logger';
 
 import type { TopazModel } from '@/types';
+
+interface VideoMetadata {
+  size: number;
+  duration: number;
+  frameCount: number;
+  frameRate: number;
+  width: number;
+  height: number;
+}
+
+interface TopazRecommendations {
+  suggestedModel: string;
+  suggestedSettings: {
+    denoiseLevel?: number;
+    sharpness?: number;
+    stabilization?: boolean;
+  };
+  qualityAnalysis: {
+    noise: number;
+    sharpness: number;
+    stability: number;
+  };
+  performanceEstimate: {
+    processingTime: number;
+    gpuMemoryRequired: number;
+  };
+}
+
+interface CostEstimate {
+  estimatedCost: number;
+  metadata: VideoMetadata;
+  recommendations?: TopazRecommendations;
+}
 
 interface TopazSettings {
   // Source settings
@@ -16,7 +50,7 @@ interface TopazSettings {
   outputFrameRate: number;
   audioCodec: 'AAC' | 'Copy';
   audioTransfer: 'Copy' | 'PassThrough';
-  dynamicCompressionLevel: 'None' | 'Low' | 'Medium' | 'High';
+  dynamicCompressionLevel: 'None' | 'Low' | 'Mid' | 'High';
   container: 'mp4' | 'mov';
 
   // Enhancement filters
@@ -36,6 +70,15 @@ interface TopazSettings {
   }>;
 }
 
+const getContainerFromFile = (file: File): 'mov' | 'mp4' => {
+  // Check file extension
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (ext === 'mov' || file.type === 'video/quicktime') {
+    return 'mov';
+  }
+  return 'mp4';
+};
+
 const defaultSettings: TopazSettings = {
   inputResolution: { width: 1920, height: 1080 },
   frameRate: 30,
@@ -43,7 +86,7 @@ const defaultSettings: TopazSettings = {
   outputFrameRate: 30,
   audioCodec: 'AAC',
   audioTransfer: 'Copy',
-  dynamicCompressionLevel: 'Medium',
+  dynamicCompressionLevel: 'Mid',
   container: 'mp4',
   filters: [{
     model: 'apo-8',
@@ -66,28 +109,129 @@ export default function Enhancement() {
   const [settings, setSettings] = useState<TopazSettings>(defaultSettings);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<string>('');
+  const [topazMetadata, setTopazMetadata] = useState<Record<string, unknown> | null>(null);
+  
   const [processedVideo, setProcessedVideo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewId = 'video-preview';
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll for job status
+  useEffect(() => {
+    const pollStatus = async () => {
+      if (!jobId || jobStatus === 'completed' || jobStatus === 'failed') return;
+      
+      try {
+        const status = await apiClient.getProcessingStatus(jobId);
+        logger.info('Job status update', { jobId, status: status.status, progress: status.progress });
+        
+        setJobStatus(status.status);
+        setProgress(status.progress || 0);
+        
+        // Store all Topaz metadata
+        setTopazMetadata(status);
+        
+        if (status.status === 'completed' && status.processedVideoUrl) {
+          logger.info('Processing complete!', { url: status.processedVideoUrl });
+          setProcessedVideo(status.processedVideoUrl);
+          setProcessing(false);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+          }
+        } else if (status.status === 'failed') {
+          logger.error('Processing failed', new Error(JSON.stringify(status)));
+          setProcessing(false);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+          }
+          alert('Video processing failed. Please try again.');
+        }
+      } catch (error) {
+        logger.error('Failed to check status', error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    
+    if (jobId && processing) {
+      // Poll every 5 seconds
+      pollIntervalRef.current = setInterval(pollStatus, 5000);
+      pollStatus(); // Check immediately
+      
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+        }
+      };
+    }
+  }, [jobId, processing, jobStatus]);
+
+  // Get cost estimate when file is selected or settings change
+  useEffect(() => {
+    const getEstimate = async () => {
+      if (selectedFile?.name && settings.inputResolution.width > 0 && settings.inputResolution.height > 0) {
+        try {
+          // Upload file first
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          const response = await fetch('/api/v1/enhancement/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const { videoKey } = await response.json();
+          
+          // Then get cost estimate with recommendations
+          const estimate = await apiClient.getProcessingCostEstimate(videoKey, settings);
+          setCostEstimate(estimate);
+        } catch (error) {
+          logger.error('Failed to get cost estimate', error instanceof Error ? error.message : String(error));
+        }
+      }
+    };
+    getEstimate();
+  }, [selectedFile, settings.inputResolution, settings]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
+      logger.info('Starting video upload process', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+
       // Get presigned URL
-      const { uploadUrl, videoKey } = await apiClient.getVideoUploadUrl();
+      const { uploadUrl, videoKey } = await apiClient.getVideoUploadUrl(file);
+      logger.debug('Received presigned URL', { videoKey });
       
       // Upload with progress tracking
       const xhr = new XMLHttpRequest();
       await new Promise((resolve, reject) => {
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
-            setProgress((event.loaded / event.total) * 100);
+            const progress = (event.loaded / event.total) * 100;
+            setProgress(progress);
+            logger.debug('Upload progress', { progress: `${progress.toFixed(2)}%` });
           }
         };
         
-        xhr.onload = () => resolve(xhr.response);
-        xhr.onerror = () => reject(xhr.statusText);
+        xhr.onload = () => {
+          logger.info('Upload completed successfully', { videoKey });
+          resolve(xhr.response);
+        };
+
+          xhr.onerror = () => {
+          logger.error('Upload failed', xhr.statusText);
+          reject(xhr.statusText);
+        };        xhr.open('PUT', uploadUrl);
         
-        xhr.open('PUT', uploadUrl);
+        // Set the correct content type for ProRes MOV
+        if (file.name.toLowerCase().endsWith('.mov')) {
+          xhr.setRequestHeader('Content-Type', 'video/quicktime');
+        } else {
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+        }
+        
         xhr.send(file);
       });
 
@@ -96,35 +240,102 @@ export default function Enhancement() {
   });
 
   const processMutation = useMutation({
-    mutationFn: async ({ videoKey, settings }: { videoKey: string; settings: TopazSettings }) => {
-      const response = await apiClient.processVideo(videoKey, settings);
-      return response.jobId;
+    mutationFn: async ({ video_key, settings }: { video_key: string; settings: TopazSettings }) => {
+      logger.info('Starting video processing', {
+        video_key,
+        settings: {
+          inputResolution: settings.inputResolution,
+          outputResolution: settings.outputResolution,
+          frameRate: settings.frameRate,
+          outputFrameRate: settings.outputFrameRate,
+          filters: settings.filters.map(f => ({ model: f.model, stabilization: f.stabilization }))
+        }
+      });
+
+      try {
+        const response = await apiClient.processVideo(video_key, settings);
+        logger.info('Processing job created', { 
+          jobId: response.jobId,
+          estimatedCost: response.estimatedCost,
+          metadata: response.metadata 
+        });
+        
+        // Store all Topaz data from initial response
+        if (response.metadata) {
+          setTopazMetadata(response.metadata as Record<string, unknown>);
+        } else if (response.estimatedCost || response.estimatedFrames) {
+          // If metadata not nested, create from top-level fields
+          setTopazMetadata({
+            estimatedCost: response.estimatedCost,
+            estimatedFrames: response.estimatedFrames,
+            estimatedDuration: response.estimatedDuration,
+            recommendations: response.recommendations
+          } as Record<string, unknown>);
+        }
+        
+        return response.jobId;
+      } catch (error) {
+        logger.error('Processing failed', error instanceof Error ? error : String(error));
+        throw error;
+      }
     }
   });
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 1024 * 1024 * 1024) { // 1GB
-        alert('File size must be less than 1GB');
-        return;
-      }
-      setSelectedFile(file);
-      
-      // Update input resolution and frame rate based on the selected video
+  const getVideoResolution = (file: File): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
+
       video.onloadedmetadata = () => {
-        setSettings(prev => ({
-          ...prev,
-          inputResolution: {
-            width: video.videoWidth,
-            height: video.videoHeight
-          },
-          frameRate: video.videoHeight
-        }));
+        URL.revokeObjectURL(video.src);
+        resolve({
+          width: video.videoWidth || 1920, // Default to 1080p if can't detect
+          height: video.videoHeight || 1080
+        });
       };
+
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        resolve({ width: 1920, height: 1080 }); // Default if metadata can't be read
+      };
+
       video.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024 * 1024) { // 2GB
+      alert('File size must be less than 2GB');
+      return;
+    }
+
+    try {
+      // Get video metadata first
+      const resolution = await getVideoResolution(file);
+      logger.debug('Video resolution detected', resolution);
+
+      // Set file and update settings
+      setSelectedFile(file);
+      const container = getContainerFromFile(file);
+      setSettings(prev => ({
+        ...prev,
+        inputResolution: {
+          width: Math.max(resolution.width, 1),
+          height: Math.max(resolution.height, 1)
+        },
+        outputResolution: {
+          width: Math.max(resolution.width, 1),
+          height: Math.max(resolution.height, 1)
+        },
+        container,
+        outputContainer: container
+      }));
+    } catch (error) {
+      logger.error('Failed to get video metadata', error instanceof Error ? error.message : String(error));
+      alert('Error reading video file. Please try another file.');
     }
   };
 
@@ -139,46 +350,129 @@ export default function Enhancement() {
   };
 
   const handleUploadAndProcess = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !settings.inputResolution.width || !settings.inputResolution.height) {
+      logger.warn('No file selected or invalid resolution', { 
+        hasFile: !!selectedFile,
+        resolution: settings.inputResolution
+      });
+      alert('Please select a valid video file');
+      return;
+    }
     
     try {
       setProcessing(true);
-      
-      // Upload file
-      const videoKey = await uploadMutation.mutateAsync(selectedFile);
-      
-      // Process with Topaz
-      const processedVideoUrl = await processMutation.mutateAsync({
-        videoKey,
-        settings
+      logger.info('Starting upload and process workflow', {
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileType: selectedFile.type,
+        resolution: settings.inputResolution
       });
       
-      setProcessedVideo(processedVideoUrl);
+      // Upload file
+      logger.debug('Initiating file upload');
+      const videoKey = await uploadMutation.mutateAsync(selectedFile);
+      logger.info('Upload completed', { videoKey });
+      
+      // Process with Topaz
+      logger.debug('Initiating Topaz processing', {
+        videoKey,
+        inputResolution: settings.inputResolution,
+        outputResolution: settings.outputResolution
+      });
+
+      const processedVideoUrl = await processMutation.mutateAsync({
+        video_key: videoKey,
+        settings: {
+          ...settings,
+          // Ensure non-zero resolution values
+          inputResolution: {
+            width: Math.max(settings.inputResolution.width, 1),
+            height: Math.max(settings.inputResolution.height, 1)
+          },
+          outputResolution: {
+            width: Math.max(settings.outputResolution.width, 1),
+            height: Math.max(settings.outputResolution.height, 1)
+          }
+        }
+      });
+      logger.info('Job submitted', { jobId: processedVideoUrl });
+      
+      // Start polling for status
+      setJobId(processedVideoUrl);
+      setJobStatus('processing');
+      // Keep processing=true so polling continues
     } catch (error) {
-      console.error('Error processing video:', error);
+      logger.error('Upload and process workflow failed', error instanceof Error ? error : String(error));
       alert('Error processing video. Please try again.');
-    } finally {
-      setProcessing(false);
+      setProcessing(false); // Only set false on error
     }
   };
-
-  // Get cost estimate when settings change
-  const { data: estimatedCost } = useQuery({
-    queryKey: ['costEstimate', settings],
-    queryFn: () => apiClient.getProcessingCostEstimate(settings),
-    enabled: !!selectedFile
-  });
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Video Enhancement</h1>
-        {estimatedCost && (
-          <div className="text-slate-600">
-            Estimated Cost: ${estimatedCost.toFixed(2)}
-          </div>
-        )}
+        <div className="flex gap-4 items-center">
+          {costEstimate && (
+            <div className="text-slate-600">
+              Estimated Cost: ${costEstimate.estimatedCost.toFixed(2)}
+            </div>
+          )}
+          {jobStatus && (
+            <div className="text-sm px-3 py-1 rounded-full bg-blue-100 text-blue-800">
+              Status: {jobStatus} {progress > 0 && `(${progress.toFixed(0)}%)`}
+            </div>
+          )}
+        </div>
       </div>
+
+            {/* Topaz Metadata Display */}
+      {topazMetadata && Object.keys(topazMetadata).length > 0 && (
+        <div className="mb-6 p-4 bg-slate-50 rounded-lg">
+          <h3 className="font-semibold mb-2">Processing Details</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {topazMetadata.estimatedCost !== null && topazMetadata.estimatedCost !== undefined && (
+              <div>
+                <span className="text-slate-600">Cost:</span>{' '}
+                <span className="font-medium">${Number(topazMetadata.estimatedCost).toFixed(2)}</span>
+              </div>
+            )}
+            {topazMetadata.estimatedFrames !== null && topazMetadata.estimatedFrames !== undefined && (
+              <div>
+                <span className="text-slate-600">Frames:</span>{' '}
+                <span className="font-medium">{String(topazMetadata.estimatedFrames)}</span>
+              </div>
+            )}
+            {topazMetadata.estimatedDuration !== null && topazMetadata.estimatedDuration !== undefined && (
+              <div>
+                <span className="text-slate-600">Duration:</span>{' '}
+                <span className="font-medium">{String(topazMetadata.estimatedDuration)}s</span>
+              </div>
+            )}
+            {topazMetadata.inputFormat !== null && topazMetadata.inputFormat !== undefined && (
+              <div>
+                <span className="text-slate-600">Format:</span>{' '}
+                <span className="font-medium">{String(topazMetadata.inputFormat)}</span>
+              </div>
+            )}
+          </div>
+          {topazMetadata.recommendations !== null && topazMetadata.recommendations !== undefined && (
+            <div className="mt-3 pt-3 border-t border-slate-200">
+              <h4 className="text-sm font-semibold mb-2">Recommendations</h4>
+              <pre className="text-xs text-slate-700 overflow-auto">
+                {JSON.stringify(topazMetadata.recommendations, null, 2)}
+              </pre>
+            </div>
+          )}
+          {/* Debug: Show all metadata */}
+          <details className="mt-3 pt-3 border-t border-slate-200">
+            <summary className="text-xs cursor-pointer text-slate-500">Show all metadata</summary>
+            <pre className="text-xs text-slate-700 overflow-auto mt-2">
+              {JSON.stringify(topazMetadata, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left side - Video preview and upload */}
@@ -186,9 +480,11 @@ export default function Enhancement() {
           <div className="aspect-video bg-slate-100 rounded-lg mb-4 overflow-hidden">
             {selectedFile && !processedVideo && (
               <video
+                id={videoPreviewId}
                 src={URL.createObjectURL(selectedFile)}
                 className="w-full h-full object-contain"
                 controls
+                aria-label="Video preview"
               />
             )}
             {processedVideo && (
@@ -211,12 +507,18 @@ export default function Enhancement() {
             )}
           </div>
           
+                    <label htmlFor="video-upload" className="sr-only">
+            Upload video file
+          </label>
           <input
             ref={fileInputRef}
+            id="video-upload"
+            name="video-upload"
             type="file"
             accept="video/*"
-            onChange={handleFileSelect}
+            onChange={handleFileChange}
             className="hidden"
+            aria-label="Upload video file"
           />
 
           {selectedFile && (
@@ -296,6 +598,53 @@ export default function Enhancement() {
                   <option value="3840x2160">4K (3840x2160)</option>
                 </select>
               </div>
+
+              {costEstimate && (
+                <div className="p-4 bg-slate-50 rounded-lg space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-medium text-slate-900">Estimated Cost</h3>
+                    <span className="text-lg font-semibold text-slate-900">
+                      ${costEstimate.estimatedCost}
+                    </span>
+                  </div>
+                  
+                  {costEstimate.metadata && (
+                    <div className="text-sm text-slate-600">
+                      <div>Duration: {Math.round(costEstimate.metadata.duration / 60)} minutes</div>
+                      <div>Resolution: {costEstimate.metadata.width}x{costEstimate.metadata.height}</div>
+                      <div>Frame Rate: {Math.round(costEstimate.metadata.frameRate)} fps</div>
+                    </div>
+                  )}
+
+                  {costEstimate.recommendations && (
+                    <div className="mt-3 border-t border-slate-200 pt-3">
+                      <h4 className="text-sm font-medium text-slate-900 mb-2">Topaz Recommendations</h4>
+                      <div className="space-y-2 text-sm text-slate-600">
+                        <div>Suggested Model: {costEstimate.recommendations.suggestedModel}</div>
+                        {costEstimate.recommendations.suggestedSettings && (
+                          <div className="space-y-1">
+                            {costEstimate.recommendations.suggestedSettings.denoiseLevel !== undefined && (
+                              <div>Denoise Level: {costEstimate.recommendations.suggestedSettings.denoiseLevel}</div>
+                            )}
+                            {costEstimate.recommendations.suggestedSettings.sharpness !== undefined && (
+                              <div>Sharpness: {costEstimate.recommendations.suggestedSettings.sharpness}</div>
+                            )}
+                            {costEstimate.recommendations.suggestedSettings.stabilization !== undefined && (
+                              <div>Stabilization: {costEstimate.recommendations.suggestedSettings.stabilization ? 'Recommended' : 'Not Needed'}</div>
+                            )}
+                          </div>
+                        )}
+                        {costEstimate.recommendations.performanceEstimate && (
+                          <div className="mt-2">
+                            <div>Est. Processing Time: {Math.round(costEstimate.recommendations.performanceEstimate.processingTime / 60)} minutes</div>
+                            <div>GPU Memory Required: {Math.round(costEstimate.recommendations.performanceEstimate.gpuMemoryRequired / 1024)} GB</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">

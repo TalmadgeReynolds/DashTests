@@ -2,7 +2,7 @@
 export type TopazModel = 'apo-8' | 'chronos' | 'proteus' | 'dione' | 'artemis' | 'gaia';
 export type AudioCodec = 'AAC' | 'Copy';
 export type AudioTransfer = 'Copy' | 'PassThrough';
-export type CompressionLevel = 'None' | 'Low' | 'Medium' | 'High';
+export type CompressionLevel = 'None' | 'Low' | 'Mid' | 'High';
 export type VideoContainer = 'mp4' | 'mov';
 
 export interface Resolution {

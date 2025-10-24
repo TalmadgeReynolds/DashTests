@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     HEYGEN_API_KEY: Optional[str] = None
     HEYGEN_MOCK_MODE: bool = True
     
+    TOPAZ_API_KEY: Optional[str] = None
+    TOPAZ_MOCK_MODE: bool = True
+    
     # Webhook verification secrets
     WEBHOOK_SECRET_HEYGEN: str = "test-webhook-secret"
     

@@ -70,19 +70,54 @@ def add_padding_to_video(video_path: str, output_path: str, padding_ms: int = 30
 
 
 def normalize_video(video_path: str, output_path: str, target_fps: int = 24) -> str:
-    """Normalize video to h264/aac with target framerate"""
+    """Normalize video to h264/aac or preserve ProRes with target framerate"""
     try:
-        cmd = [
-            "ffmpeg",
-            "-i", video_path,
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "23",
-            "-r", str(target_fps),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-y", output_path
-        ]
+        logger.info("Starting video normalization", 
+                   input_path=video_path, 
+                   output_path=output_path,
+                   target_fps=target_fps,
+                   exists=os.path.exists(video_path),
+                   size=os.path.getsize(video_path) if os.path.exists(video_path) else None)
+        
+        # Get input video information
+        info = get_video_info(video_path)
+        video_stream = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+        audio_stream = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
+        
+        logger.info("Video streams analysis", 
+                   video_codec=video_stream.get("codec_name") if video_stream else None,
+                   video_width=video_stream.get("width") if video_stream else None,
+                   video_height=video_stream.get("height") if video_stream else None,
+                   video_fps=video_stream.get("r_frame_rate") if video_stream else None,
+                   audio_codec=audio_stream.get("codec_name") if audio_stream else None,
+                   audio_channels=audio_stream.get("channels") if audio_stream else None,
+                   format_name=info.get("format", {}).get("format_name"))
+        if video_stream and video_stream.get("codec_name", "").lower() == "prores":
+            # For ProRes, preserve the video codec
+            cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-c:v", "copy",  # Copy video stream without re-encoding
+                "-r", str(target_fps),
+                "-c:a", "aac",  # Convert audio to AAC
+                "-b:a", "256k",  # Higher quality audio for pro format
+                "-y", output_path
+            ]
+            logger.info("Using ProRes preservation pipeline", command=" ".join(cmd))
+        else:
+            # For other formats, use h264
+            cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "23",
+                "-r", str(target_fps),
+                "-movflags", "+faststart",  # Enable streaming optimization
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-y", output_path
+            ]
         subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return output_path
     except subprocess.SubprocessError as e:

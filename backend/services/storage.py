@@ -34,8 +34,8 @@ class StorageService:
             "max_size_bytes": 20 * 1024 * 1024  # 20MB
         },
         PresignKind.VIDEO: {
-            "mime_types": ["video/mp4"],
-            "max_size_bytes": 100 * 1024 * 1024  # 100MB
+            "mime_types": ["video/mp4", "video/quicktime"],  # QuickTime is the standard MIME type for ProRes
+            "max_size_bytes": 2 * 1024 * 1024 * 1024  # 2GB to accommodate ProRes files
         },
         PresignKind.SCREENPLAY: {
             "mime_types": ["application/pdf"],

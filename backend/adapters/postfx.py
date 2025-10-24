@@ -337,15 +337,32 @@ class PostFxAdapter:
                 logger.info("postfx_upload_start", key=key)
                 
                 # Upload file to S3
+                # Check if the output is ProRes
+                mime_type = "video/quicktime" if final_path.endswith(".mov") else "video/mp4"
+                
+                # Log file details before upload
+                file_info = get_video_info(final_path)
+                logger.info("Uploading processed video",
+                           path=final_path,
+                           size_bytes=os.path.getsize(final_path),
+                           mime_type=mime_type,
+                           video_info=file_info)
+                
                 self.s3_client.upload_file(
                     final_path, 
                     self.bucket, 
                     key,
                     ExtraArgs={
-                        "ContentType": "video/mp4",
+                        "ContentType": mime_type,
                         "Metadata": metadata
-                    }
-                )
+                    })
+                
+                # Verify upload by checking object metadata
+                head = self.s3_client.head_object(Bucket=self.bucket, Key=key)
+                logger.info("Upload verification",
+                           content_type=head.get('ContentType'),
+                           content_length=head.get('ContentLength'),
+                           metadata=head.get('Metadata'))
                 
                 # Generate the public URL
                 final_url = f"{self.public_endpoint}/{self.bucket}/{key}"

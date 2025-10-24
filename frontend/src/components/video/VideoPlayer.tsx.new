@@ -1,0 +1,85 @@
+import { useEffect, useRef } from 'react';
+// @ts-ignore - Plyr types are not properly exported
+import Plyr from 'plyr';
+import 'plyr/dist/plyr.css';
+
+interface VideoPlayerProps {
+  src: string;
+  className?: string;
+}
+
+export function VideoPlayer({ src, className = '' }: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<any>(null);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || playerRef.current) return;
+
+    // Add debug logging
+    console.log('[VideoPlayer] Initializing with source:', src);
+    
+    const handleError = (e: Event) => {
+      const video = e.target as HTMLVideoElement;
+      const error = video.error;
+      console.error('[VideoPlayer] Video error:', {
+        code: error?.code,
+        message: error?.message,
+        src: video.src,
+        networkState: video.networkState,
+        readyState: video.readyState
+      });
+    };
+
+    const handleMetadata = () => {
+      console.log('[VideoPlayer] Video metadata loaded:', {
+        duration: videoElement.duration,
+        videoWidth: videoElement.videoWidth,
+        videoHeight: videoElement.videoHeight,
+        readyState: videoElement.readyState
+      });
+    };
+
+    videoElement.addEventListener('error', handleError);
+    videoElement.addEventListener('loadedmetadata', handleMetadata);
+
+    try {
+      playerRef.current = new Plyr(videoElement, {
+        controls: [
+          'play-large',
+          'play',
+          'progress',
+          'current-time',
+          'mute',
+          'volume',
+          'settings',
+          'fullscreen'
+        ]
+      });
+
+      console.log('[VideoPlayer] Plyr initialized successfully');
+    } catch (error) {
+      console.error('[VideoPlayer] Failed to initialize Plyr:', error);
+    }
+
+    return () => {
+      console.log('[VideoPlayer] Cleaning up player');
+      videoElement.removeEventListener('error', handleError);
+      videoElement.removeEventListener('loadedmetadata', handleMetadata);
+      if (playerRef.current) {
+        playerRef.current.destroy();
+      }
+    };
+  }, [src]);
+
+  return (
+    <video
+      ref={videoRef}
+      className={className}
+      src={src}
+      controls
+      crossOrigin="anonymous"
+      playsInline
+    />
+  );
+}
