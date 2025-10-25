@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     STORAGE_PUBLIC_ENDPOINT: str = "http://localhost:9000"  # Public-facing URL for generated URLs
     STORAGE_MOCK_MODE: bool = parse_bool(os.getenv('STORAGE_MOCK_MODE', 'false'))  # Use mock storage implementation
     
+    # AWS S3 settings (for production)
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+    S3_BUCKET_NAME: str = "ted-talks-videos"  # Your actual S3 bucket name
+    
     # Provider API keys (set to None to use mock mode)
     VEO3_API_KEY: Optional[str] = None
     VEO3_MOCK_MODE: bool = True

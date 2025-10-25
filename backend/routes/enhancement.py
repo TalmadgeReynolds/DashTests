@@ -246,11 +246,15 @@ async def estimate_processing_cost(video_key: str = Body(...), settings: TopazSe
         for filter in settings.filters:
             if filter.stabilization:
                 adjusted_cost *= 1.2  # 20% extra for stabilization
-            if filter.model in ["chronos", "proteus"]:
-                adjusted_cost *= 1.3  # 30% extra for advanced models
+            # Frame interpolation models (Apollo, Chronos)
+            if filter.model in ["apo-8", "apf-2", "chr-2", "chf-3"]:
+                adjusted_cost *= 1.3  # 30% extra for frame interpolation
+            # Advanced upscaling (Rhea, Theia)
+            if filter.model in ["rhea-1", "thd-3", "thf-4"]:
+                adjusted_cost *= 1.4  # 40% extra for advanced upscaling
         
         # Get Topaz recommendations for the video
-        headers = {
+        headers = {     
             "X-API-Key": app_settings.TOPAZ_API_KEY,
             "accept": "application/json",
             "content-type": "application/json"
@@ -349,8 +353,7 @@ async def process_video(request: JobCreate):
                 "model": filter.model,
                 "slowmo": filter.slowmo or 1,
                 "fps": topaz_settings.outputFrameRate
-            } for filter in topaz_settings.filters]
-        }
+            } for filter in topaz_settings.filters]        }
         
         logger.info("Step 1: Creating Topaz video request", payload=topaz_payload)
         
@@ -538,6 +541,14 @@ async def get_processing_status(job_id: str) -> Dict:
             job_data = response.json()
             status = job_data.get("status")
             
+            # Log the complete response structure for debugging
+            logger.info("Parsed Topaz status data",
+                       job_id=job_id,
+                       status=status,
+                       has_download=("download" in job_data),
+                       download_keys=list(job_data.get("download", {}).keys()) if isinstance(job_data.get("download"), dict) else "not_a_dict",
+                       all_keys=list(job_data.keys()))
+            
             # If processing is complete, download the video
             processed_video_url = None
             # Topaz returns status as "complete" (not "completed")
@@ -546,10 +557,6 @@ async def get_processing_status(job_id: str) -> Dict:
                 download_data = job_data.get("download", {})
                 output_url = download_data.get("url") if download_data else None
                 
-                if not output_url:
-                    logger.warning("Job complete but no download URL found",
-                                 job_id=job_id,
-                                 download_data=download_data)
                 if not output_url:
                     logger.warning("Job complete but no download URL found",
                                  job_id=job_id,
@@ -574,8 +581,8 @@ async def get_processing_status(job_id: str) -> Dict:
                             ContentType="video/mp4"
                         )
                         
-                        # Generate public URL
-                        processed_video_url = f"{app_settings.S3_BUCKET_URL}/{processed_key}"
+                        # Generate public URL using bucket name and region
+                        processed_video_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/{processed_key}"
                         
                         logger.info("Processed video uploaded to S3",
                                    job_id=job_id,

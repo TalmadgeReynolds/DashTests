@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { apiClient } from '@/lib/api-client';
 import { logger } from '@/lib/logger';
 
-import type { TopazModel } from '@/types';
+import type { TopazModel, TopazSettings } from '@/types';
 
 interface VideoMetadata {
   size: number;
@@ -40,36 +40,6 @@ interface CostEstimate {
   recommendations?: TopazRecommendations;
 }
 
-interface TopazSettings {
-  // Source settings
-  inputResolution: { width: number; height: number };
-  frameRate: number;
-  
-  // Output settings
-  outputResolution: { width: number; height: number };
-  outputFrameRate: number;
-  audioCodec: 'AAC' | 'Copy';
-  audioTransfer: 'Copy' | 'PassThrough';
-  dynamicCompressionLevel: 'None' | 'Low' | 'Mid' | 'High';
-  container: 'mp4' | 'mov';
-
-  // Enhancement filters
-  filters: Array<{
-    model: 'apo-8' | 'chronos' | 'proteus' | 'dione' | 'artemis' | 'gaia';
-    slowmo?: number;
-    denoiseLevel?: number;
-    sharpness?: number;
-    stabilization?: boolean;
-    colorGrading?: {
-      brightness: number;
-      contrast: number;
-      saturation: number;
-      temperature: number;
-      tint: number;
-    };
-  }>;
-}
-
 const getContainerFromFile = (file: File): 'mov' | 'mp4' => {
   // Check file extension
   const ext = file.name.split('.').pop()?.toLowerCase();
@@ -89,7 +59,7 @@ const defaultSettings: TopazSettings = {
   dynamicCompressionLevel: 'Mid',
   container: 'mp4',
   filters: [{
-    model: 'apo-8',
+    model: 'prob-4',  // Proteus - Best for most videos
     slowmo: 1,
     denoiseLevel: 0.5,
     sharpness: 0.5,
@@ -555,7 +525,33 @@ export default function Enhancement() {
           <div>
             <h3 className="text-lg font-semibold mb-4">Enhancement Model</h3>
             <div className="grid grid-cols-2 gap-4">
-              {['apo-8', 'chronos', 'proteus', 'dione', 'artemis', 'gaia'].map((model) => (
+              {[
+                'prob-4',   // Proteus
+                'ahq-12',   // Artemis HQ
+                'amq-13',   // Artemis MQ
+                'alq-13',   // Artemis LQ
+                'nyx-3',    // Nyx
+                'nxf-1',    // Nyx Fast
+                'rhea-1',   // Rhea
+                'ghq-5',    // Gaia HQ
+                'gcg-5',    // Gaia CG
+                'apo-8',    // Apollo
+                'apf-2',    // Apollo Fast
+                'chr-2',    // Chronos
+                'chf-3',    // Chronos Fast
+                'ddv-3',    // Dione DV
+                'dtd-4',    // Dione Robust
+                'dtds-2',   // Dione Robust Dehalo
+                'dtv-4',    // Dione TV
+                'dtvs-2',   // Dione Halo
+                'alqs-2',   // Artemis Strong Halo
+                'amqs-2',   // Artemis Dehalo
+                'aaa-9',    // Artemis Aliased
+                'thd-3',    // Theia Detail
+                'thf-4',    // Theia Fidelity
+                'iris-3',   // Iris
+                'thm-2'     // Themis
+              ].map((model) => (
                 <button
                   key={model}
                   onClick={() => handleModelChange(model as TopazModel)}
@@ -768,6 +764,42 @@ export default function Enhancement() {
                   </span>
                 </label>
               </div>
+
+              {/* Slowmo control - only for frame interpolation models */}
+              {['apo-8', 'apf-2', 'chr-2', 'chf-3'].includes(settings.filters[0].model) && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Slow Motion Factor
+                    <span className="text-xs text-slate-500 ml-2">
+                      ({settings.filters[0].slowmo || 1}x slower)
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="8"
+                    step="0.5"
+                    value={settings.filters[0].slowmo || 1}
+                    onChange={(e) => {
+                      setSettings(prev => ({
+                        ...prev,
+                        filters: [{
+                          ...prev.filters[0],
+                          slowmo: Number(e.target.value)
+                        }]
+                      }));
+                    }}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>1x (Normal)</span>
+                    <span>8x (Ultra Slow)</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Frame interpolation will create smoother slow-motion by generating intermediate frames
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -816,18 +848,59 @@ export default function Enhancement() {
 
 function getModelDescription(model: string): string {
   switch (model) {
+    // Enhancement Models
+    case 'prob-4':
+      return 'Proteus - Best for most videos';
+    case 'ahq-12':
+      return 'Artemis High Quality - Denoise & sharpen';
+    case 'amq-13':
+      return 'Artemis Medium Quality';
+    case 'alq-13':
+      return 'Artemis Low Quality';
+    case 'nyx-3':
+      return 'Nyx - Dedicated for denoise';
+    case 'nxf-1':
+      return 'Nyx Fast';
+    case 'rhea-1':
+      return 'Rhea - Advanced 4x upscaling';
+    case 'ghq-5':
+      return 'Gaia HQ - Best for GenAI/CG/Animation';
+    case 'gcg-5':
+      return 'Gaia - Computer Generated';
+    // Frame Interpolation
     case 'apo-8':
-      return 'General purpose enhancement and upscaling';
-    case 'chronos':
-      return 'Frame interpolation and slow motion';
-    case 'proteus':
-      return 'Noise reduction and detail preservation';
-    case 'dione':
-      return 'Advanced stabilization and motion smoothing';
-    case 'artemis':
-      return 'Color grading and HDR optimization';
-    case 'gaia':
-      return 'AI-powered scene optimization';
+      return 'Apollo - Best overall, up to 8x slowmo';
+    case 'apf-2':
+      return 'Apollo Fast';
+    case 'chr-2':
+      return 'Chronos - General framerate conversions';
+    case 'chf-3':
+      return 'Chronos Fast';
+    // Advanced Enhancement
+    case 'ddv-3':
+      return 'Dione - DV Footage';
+    case 'dtd-4':
+      return 'Dione - Robust';
+    case 'dtds-2':
+      return 'Dione - Robust Dehalo';
+    case 'dtv-4':
+      return 'Dione - TV';
+    case 'dtvs-2':
+      return 'Dione - Halo';
+    case 'alqs-2':
+      return 'Artemis - Strong Halo';
+    case 'amqs-2':
+      return 'Artemis - Dehalo';
+    case 'aaa-9':
+      return 'Artemis - Aliased & Moire';
+    case 'thd-3':
+      return 'Theia - Detail (High fidelity)';
+    case 'thf-4':
+      return 'Theia - Fidelity';
+    case 'iris-3':
+      return 'Iris - Specialized for faces';
+    case 'thm-2':
+      return 'Themis - Motion deblur';
     default:
       return '';
   }
