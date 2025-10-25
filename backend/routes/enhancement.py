@@ -45,6 +45,152 @@ router = APIRouter(tags=["enhancement"])
 # In-memory job storage for demo (replace with database in production)
 job_store = {}
 
+@router.get("/enhancement/debug-s3")
+async def debug_s3_contents() -> Dict:
+    """Debug endpoint to see what's in S3"""
+    app_settings = get_settings()
+    s3_client = get_s3_client()
+    
+    try:
+        # List all objects in bucket
+        response = s3_client.list_objects_v2(
+            Bucket=app_settings.S3_BUCKET_NAME,
+            MaxKeys=100
+        )
+        
+        objects = []
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                objects.append({
+                    "key": obj['Key'],
+                    "size": obj['Size'],
+                    "lastModified": obj['LastModified'].isoformat()
+                })
+        
+        return {
+            "bucket": app_settings.S3_BUCKET_NAME,
+            "totalObjects": len(objects),
+            "objects": objects
+        }
+    except Exception as e:
+        logger.error("Failed to list S3 contents", error=str(e))
+        return {
+            "error": str(e),
+            "bucket": app_settings.S3_BUCKET_NAME
+        }
+
+@router.get("/enhancement/past-videos")
+async def list_past_videos() -> Dict:
+    """List all processed videos from S3 with their original and processed versions"""
+    app_settings = get_settings()
+    s3_client = get_s3_client()
+    
+    try:
+        # List all processed videos
+        logger.info("Listing processed videos from S3", bucket=app_settings.S3_BUCKET_NAME)
+        processed_response = s3_client.list_objects_v2(
+            Bucket=app_settings.S3_BUCKET_NAME,
+            Prefix="processed/"
+        )
+        
+        logger.info("S3 response", 
+                   has_contents='Contents' in processed_response,
+                   count=len(processed_response.get('Contents', [])))
+        
+        videos = []
+        
+        # First, try to list videos from processed/ folder
+        if 'Contents' in processed_response and len(processed_response.get('Contents', [])) > 0:
+            logger.info("Processing S3 objects from processed/", count=len(processed_response['Contents']))
+            for obj in processed_response['Contents']:
+                # Extract job_id from filename (e.g., "processed/job123.mp4" -> "job123")
+                filename = obj['Key'].split('/')[-1]
+                logger.debug("Processing file", key=obj['Key'], filename=filename)
+                
+                if not filename.endswith('.mp4'):
+                    logger.debug("Skipping non-mp4 file", filename=filename)
+                    continue
+                    
+                job_id = filename.replace('.mp4', '')
+                logger.debug("Found video", job_id=job_id)
+                
+                # Try to find the original video key from job_store
+                original_key = None
+                if job_id in job_store:
+                    original_key = job_store[job_id].get('video_key')
+                
+                processed_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/{obj['Key']}"
+                
+                # Check if comparison exists
+                comparison_key = f"comparisons/{job_id}_comparison.mp4"
+                comparison_url = None
+                try:
+                    s3_client.head_object(Bucket=app_settings.S3_BUCKET_NAME, Key=comparison_key)
+                    comparison_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/{comparison_key}"
+                except:
+                    pass
+                
+                # Get original video URL if we have the key
+                original_url = None
+                if original_key:
+                    original_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/video/{original_key}"
+                
+                videos.append({
+                    "jobId": job_id,
+                    "originalUrl": original_url,
+                    "processedUrl": processed_url,
+                    "comparisonUrl": comparison_url,
+                    "uploadedAt": obj['LastModified'].isoformat(),
+                    "size": obj['Size']
+                })
+        
+        # If no videos in processed/ folder, check the entire bucket
+        elif 'Contents' not in processed_response or len(processed_response.get('Contents', [])) == 0:
+            logger.info("No videos in processed/ folder, checking entire bucket")
+            all_response = s3_client.list_objects_v2(
+                Bucket=app_settings.S3_BUCKET_NAME
+            )
+            
+            if 'Contents' in all_response:
+                # Group videos by folder
+                video_files = {}
+                for obj in all_response['Contents']:
+                    if obj['Key'].endswith('.mp4'):
+                        folder = obj['Key'].split('/')[0] if '/' in obj['Key'] else 'root'
+                        if folder not in video_files:
+                            video_files[folder] = []
+                        video_files[folder].append(obj)
+                
+                logger.info("Found video files", folders=list(video_files.keys()), 
+                          counts={k: len(v) for k, v in video_files.items()})
+                
+                # Return videos from any folder as processed videos
+                for folder, files in video_files.items():
+                    for obj in files:
+                        filename = obj['Key'].split('/')[-1]
+                        job_id = filename.replace('.mp4', '')
+                        
+                        processed_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/{obj['Key']}"
+                        
+                        videos.append({
+                            "jobId": job_id,
+                            "originalUrl": None,
+                            "processedUrl": processed_url,
+                            "comparisonUrl": None,
+                            "uploadedAt": obj['LastModified'].isoformat(),
+                            "size": obj['Size'],
+                            "folder": folder
+                        })
+        
+        logger.info("Returning videos", count=len(videos))
+        return {
+            "videos": sorted(videos, key=lambda x: x['uploadedAt'], reverse=True)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list past videos", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/enhancement/jobs", response_model=List[JobBase], name="list_jobs")
 async def list_jobs(db: Session = Depends(get_db)):
     """List all enhancement jobs"""
@@ -199,211 +345,152 @@ async def get_upload_url() -> Dict:
         logger.error("upload_url_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+class EstimateCostRequest(BaseModel):
+    video_key: str
+    settings: TopazSettings
+
 @router.post("/enhancement/estimate-cost")
-async def estimate_processing_cost(video_key: str = Body(...), settings: TopazSettings = Body(...)) -> Dict:
-    """Estimate the cost of processing a video with the given settings"""
-    # Get app settings
+async def estimate_processing_cost(request: EstimateCostRequest) -> Dict:
+    """Get cost estimate from Topaz API by creating a request (doesn't charge yet)"""
     app_settings = get_settings()
+    video_key = request.video_key
+    settings = request.settings
     
-    # Get video file from storage
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=f"{'https://' if app_settings.STORAGE_USE_SSL else 'http://'}{app_settings.STORAGE_ENDPOINT}",
-        aws_access_key_id=app_settings.STORAGE_ACCESS_KEY,
-        aws_secret_access_key=app_settings.STORAGE_SECRET_KEY
-    )
+    # Get S3 client with AWS credentials
+    s3_client = get_s3_client()
     
-    # Download video for metadata analysis
     input_path = f"/tmp/{os.path.basename(video_key)}"
+    # Ensure the video key includes the 'video/' prefix for S3
+    s3_video_key = f"video/{video_key}" if not video_key.startswith("video/") else video_key
     try:
-        s3_client.download_file(app_settings.STORAGE_BUCKET, video_key, input_path)
+        s3_client.download_file(app_settings.S3_BUCKET_NAME, s3_video_key, input_path)
         metadata = await get_video_metadata(input_path)
         
-        # Validate and adjust container format if needed
+        # Validate container format
         detected_container = metadata['container']
         if settings.container != detected_container:
             logger.warning(f"Container format mismatch. Settings: {settings.container}, Detected: {detected_container}")
-            settings.container = detected_container  # Auto-correct to detected format
+            settings.container = detected_container
         
-        # Validate container format matches metadata
-        if settings.container != metadata.get('container', 'mp4'):
-            logger.warning(f"Container format mismatch. Settings: {settings.container}, Detected: {metadata.get('container', 'mp4')}")
-            # Auto-correct container format
-            settings.container = metadata.get('container', 'mp4')
-        
-        # Base cost calculation using actual duration
-        minutes = metadata['duration'] / 60
-        resolution_multiplier = (settings.outputResolution.width * settings.outputResolution.height) / (1920 * 1080)
-        fps_multiplier = settings.outputFrameRate / 30
-        
-        # Base cost per minute of video
-        base_cost = 0.50  # $0.50 per minute for 1080p30
-        
-        # Adjust for resolution and frame rate
-        adjusted_cost = base_cost * resolution_multiplier * fps_multiplier * minutes
-        
-        # Add costs for additional filters
-        for filter in settings.filters:
-            if filter.stabilization:
-                adjusted_cost *= 1.2  # 20% extra for stabilization
-            # Frame interpolation models (Apollo, Chronos)
-            if filter.model in ["apo-8", "apf-2", "chr-2", "chf-3"]:
-                adjusted_cost *= 1.3  # 30% extra for frame interpolation
-            # Advanced upscaling (Rhea, Theia)
-            if filter.model in ["rhea-1", "thd-3", "thf-4"]:
-                adjusted_cost *= 1.4  # 40% extra for advanced upscaling
-        
-        # Get Topaz recommendations for the video
-        headers = {     
-            "X-API-Key": app_settings.TOPAZ_API_KEY,
-            "accept": "application/json",
-            "content-type": "application/json"
-        }
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.topazlabs.com/video/analyze",
-                headers=headers,
-                json={
-                    "source": {
-                        "resolution": settings.inputResolution.dict(),
-                        "frameRate": metadata["frameRate"],
-                        "size": metadata["size"],
-                        "duration": metadata["duration"],
-                        "frameCount": metadata["frameCount"],
-                        "container": metadata["container"]
-                    }
-                }
-            )
-            
-            recommendations = response.json() if response.status_code == 200 else None
-            
-        return {
-            "estimatedCost": round(adjusted_cost, 2),
-            "metadata": metadata,
-            "recommendations": recommendations
-        }
-        
-    finally:
-        # Clean up temp file
-        if os.path.exists(input_path):
-            os.remove(input_path)
-
-@router.post("/enhancement/process")
-async def process_video(request: JobCreate):
-    """Process a video using Topaz Video AI - follows their multi-step workflow"""
-    input_path = None
-    
-    # Get global settings and validate request settings
-    app_settings = get_settings()
-    topaz_settings = request.settings
-    
-    try:
-        # Get the video file from S3
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=f"{'https://' if app_settings.STORAGE_USE_SSL else 'http://'}{app_settings.STORAGE_ENDPOINT}",
-            aws_access_key_id=app_settings.STORAGE_ACCESS_KEY,
-            aws_secret_access_key=app_settings.STORAGE_SECRET_KEY,
-            region_name="us-east-1"
-        )
-        
-        # Create temp directory if it doesn't exist
-        os.makedirs("/tmp", exist_ok=True)
-        
-        # Ensure the video key path is complete
-        video_key = f"video/{request.video_key}" if not request.video_key.startswith("video/") else request.video_key
-        
-        # Download video to temp location
-        input_path = f"/tmp/{os.path.basename(request.video_key)}"
-        
-        # Download file from S3
-        s3_client.download_file(app_settings.STORAGE_BUCKET, video_key, input_path)
-        
-        # Get video metadata for source info
-        metadata = await get_video_metadata(input_path)
-        
-        # Prepare headers for Topaz API
+        # Call Topaz API to get REAL cost estimate
         headers = {
             "X-API-Key": app_settings.TOPAZ_API_KEY,
             "accept": "application/json",
             "content-type": "application/json"
         }
         
-        # Step 1: Create video request (FREE - just gets cost estimate and requestId)
         topaz_payload = {
             "source": {
-                "resolution": topaz_settings.inputResolution.dict(),
+                "resolution": settings.inputResolution.dict(),
                 "frameRate": metadata["frameRate"],
                 "size": metadata["size"],
                 "duration": metadata["duration"],
-                "frameCount": str(metadata["frameCount"]),  # Topaz expects string
+                "frameCount": str(metadata["frameCount"]),
                 "container": metadata["container"]
             },
             "output": {
-                "resolution": topaz_settings.outputResolution.dict(),
-                "audioCodec": topaz_settings.audioCodec,
-                "audioTransfer": topaz_settings.audioTransfer,
-                "frameRate": topaz_settings.outputFrameRate,
-                "dynamicCompressionLevel": topaz_settings.dynamicCompressionLevel,
-                "videoBitrate": format_bitrate(topaz_settings.videoBitrate),
-                "container": topaz_settings.container
+                "resolution": settings.outputResolution.dict(),
+                "audioCodec": settings.audioCodec,
+                "audioTransfer": settings.audioTransfer,
+                "frameRate": settings.outputFrameRate,
+                "dynamicCompressionLevel": settings.dynamicCompressionLevel,
+                "videoBitrate": settings.videoBitrate or "10m",
+                "container": settings.container
             },
             "filters": [{
                 "model": filter.model,
                 "slowmo": filter.slowmo or 1,
-                "fps": topaz_settings.outputFrameRate
-            } for filter in topaz_settings.filters]        }
-        
-        logger.info("Step 1: Creating Topaz video request", payload=topaz_payload)
+                "fps": settings.outputFrameRate
+            } for filter in settings.filters]
+        }
         
         async with httpx.AsyncClient(timeout=30.0) as client:
-            # Step 1: Create request
-            create_response = await client.post(
+            response = await client.post(
                 "https://api.topazlabs.com/video/",
                 headers=headers,
                 json=topaz_payload
             )
             
-            logger.info("Topaz create response", 
-                       status_code=create_response.status_code,
-                       response=create_response.text)
+            logger.info("Topaz estimate response",
+                       status_code=response.status_code,
+                       response=response.text)
             
-            if create_response.status_code != 200:
-                raise ProviderError(f"Topaz API error: {create_response.text}")
-                
-            create_data = create_response.json()
-            request_id = create_data["requestId"]
+            if response.status_code != 200:
+                raise ProviderError(f"Topaz API error: {response.text}")
             
-            # Log the raw response to see what Topaz actually returns
-            logger.info("Raw Topaz create response", 
-                       request_id=request_id,
-                       keys=list(create_data.keys()),
-                       full_data=create_data)
+            create_data = response.json()
             
-            # Extract estimates data from Topaz response
+            # Extract REAL cost estimate from Topaz
             estimates = create_data.get("estimates", {})
             cost_range = estimates.get("cost", [])
             time_range = estimates.get("time", [])
             
-            # Calculate estimated cost (average of range) and duration
-            estimated_cost = sum(cost_range) / len(cost_range) if cost_range else None
-            estimated_duration = sum(time_range) / len(time_range) if time_range else None
+            # Calculate average cost and time from Topaz's range
+            estimated_cost = sum(cost_range) / len(cost_range) if cost_range else 0
+            estimated_duration = sum(time_range) / len(time_range) if time_range else 0
             
-            # Capture all Topaz response data with extracted estimates
-            topaz_metadata = {
-                "requestId": request_id,
-                "estimatedCost": estimated_cost,
-                "estimatedDuration": estimated_duration,
-                "rawResponse": create_data  # Store complete response
+            logger.info("Topaz cost estimate",
+                       cost=estimated_cost,
+                       duration=estimated_duration,
+                       cost_range=cost_range,
+                       time_range=time_range,
+                       request_id=create_data.get("requestId"))
+            
+            return {
+                "requestId": create_data.get("requestId"),
+                "estimatedCost": round(estimated_cost, 2),
+                "estimatedDuration": round(estimated_duration, 2),
+                "metadata": metadata,
+                "costRange": cost_range,
+                "timeRange": time_range,
+                "recommendations": None  # Topaz doesn't provide recommendations
             }
-            
-            logger.info("Extracted metadata", 
-                       metadata=topaz_metadata)
-            
-            logger.info("Step 2: Accepting Topaz request", 
-                       request_id=request_id,
-                       metadata=topaz_metadata)
+        
+    finally:
+        # Clean up temp file
+        if os.path.exists(input_path):
+            os.remove(input_path)
+
+class ConfirmProcessRequest(BaseModel):
+    request_id: str
+    video_key: str
+
+@router.post("/enhancement/confirm-and-process")
+async def confirm_and_process(request: ConfirmProcessRequest):
+    """Accept a Topaz request and start processing (charges the account)"""
+    app_settings = get_settings()
+    input_path = None
+    request_id = request.request_id
+    video_key = request.video_key
+    
+    try:
+        logger.info("Confirming Topaz request",
+                   request_id=request_id,
+                   video_key=video_key)
+        
+        # Get S3 client with AWS credentials
+        s3_client = get_s3_client()
+        
+        # Ensure the video key path is complete
+        full_video_key = f"video/{video_key}" if not video_key.startswith("video/") else video_key
+        input_path = f"/tmp/{os.path.basename(video_key)}"
+        
+        # Download file from S3
+        s3_client.download_file(app_settings.S3_BUCKET_NAME, full_video_key, input_path)
+        
+        # Get video metadata
+        metadata = await get_video_metadata(input_path)
+        
+        # Prepare headers for Topaz API
+        headers = {
+            "X-API-Key": app_settings.TOPAZ_API_KEY,
+            "accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Step 1: Accept the pre-created request (THIS CHARGES THE ACCOUNT)
+            logger.info("Step 1: Accepting Topaz request (will charge account)", 
+                       request_id=request_id)
             
             # Step 2: Accept the request to get upload URLs
             accept_response = await client.patch(
@@ -427,7 +514,7 @@ async def process_video(request: JobCreate):
             if not upload_urls:
                 raise ProviderError("No upload URLs received from Topaz")
             
-            logger.info("Step 3: Uploading video to Topaz", 
+            logger.info("Step 2: Uploading video to Topaz", 
                        num_parts=len(upload_urls))
             
             # Step 3: Upload video (for now, assume single part upload)
@@ -447,7 +534,7 @@ async def process_video(request: JobCreate):
             # Get eTag from response headers
             etag = upload_response.headers.get("ETag", "").strip('"')
             
-            logger.info("Step 4: Completing upload", etag=etag)
+            logger.info("Step 3: Completing upload", etag=etag)
             
             # Step 4: Complete the upload to start processing
             complete_response = await client.patch(
@@ -471,39 +558,33 @@ async def process_video(request: JobCreate):
             complete_data = complete_response.json()
             logger.info("Processing queued successfully", message=complete_data.get("message"))
             
-            # Create and store job info with all Topaz metadata
+            # Create and store job info
             job_info = {
                 "id": request_id,
                 "status": "processing",
                 "created_at": datetime.datetime.utcnow(),
                 "updated_at": datetime.datetime.utcnow(),
-                "video_key": request.video_key,
-                "settings": topaz_settings.dict(),
-                "progress": 0,
-                "topaz_metadata": topaz_metadata
+                "video_key": video_key,
+                "progress": 0
             }
             
             job_store[request_id] = job_info
             
-            logger.info("Video processing job created successfully",
+            logger.info("Video processing job started successfully",
                        job_id=request_id,
-                       video_key=request.video_key,
-                       metadata=topaz_metadata)
+                       video_key=video_key)
             
-            # Return response in format frontend expects with all Topaz data
+            # Return response
             return {
                 "jobId": request_id,
                 "status": "processing",
-                "video_key": request.video_key,
-                "estimatedCost": topaz_metadata.get("estimatedCost"),
-                "estimatedDuration": topaz_metadata.get("estimatedDuration"),
-                "metadata": topaz_metadata
+                "video_key": video_key
             }
             
     except Exception as e:
-        logger.error("topaz_process_error",
+        logger.error("topaz_confirm_error",
                      error=str(e),
-                     video_key=request.video_key)
+                     video_key=video_key)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # Clean up temp file
@@ -609,3 +690,136 @@ async def get_processing_status(job_id: str) -> Dict:
     except Exception as e:
         logger.error("topaz_status_error", error=str(e), job_id=job_id)
         raise HTTPException(status_code=500, detail=str(e))
+
+class CreateComparisonRequest(BaseModel):
+    job_id: str
+
+@router.post("/enhancement/create-comparison")
+async def create_comparison_video(request: CreateComparisonRequest) -> Dict:
+    """Create a side-by-side comparison video of original vs processed with labels"""
+    app_settings = get_settings()
+    job_id = request.job_id
+    s3_client = get_s3_client()
+    
+    # Try to get job from store, or look up from S3
+    if job_id in job_store:
+        job = job_store[job_id]
+        original_key = job.get("video_key")
+    else:
+        # Job not in store - this is a past video from S3
+        logger.info("Job not in store, looking up from S3", job_id=job_id)
+        original_key = None
+        
+        # Try to find the original video in S3
+        try:
+            # List all videos in the video/ folder to find a match
+            video_response = s3_client.list_objects_v2(
+                Bucket=app_settings.S3_BUCKET_NAME,
+                Prefix="video/"
+            )
+            
+            # For now, we'll use the first video we find (or None if no match)
+            # In production, you'd want to store this mapping in a database
+            if 'Contents' in video_response and len(video_response['Contents']) > 0:
+                original_key = video_response['Contents'][0]['Key']
+                logger.info("Found original video", original_key=original_key)
+        except Exception as e:
+            logger.warning("Could not find original video", error=str(e))
+    
+    # Check if processed video exists
+    processed_key = f"processed/{job_id}.mp4"
+    try:
+        s3_client.head_object(Bucket=app_settings.S3_BUCKET_NAME, Key=processed_key)
+    except:
+        raise HTTPException(status_code=404, detail="Processed video not found in S3")
+    
+    comparison_key = f"comparisons/{job_id}_comparison.mp4"
+    
+    original_path = f"/tmp/original_{job_id}.mp4"
+    processed_path = f"/tmp/processed_{job_id}.mp4"
+    comparison_path = f"/tmp/comparison_{job_id}.mp4"
+    
+    try:
+        logger.info("Downloading videos for comparison", job_id=job_id, has_original=bool(original_key))
+        
+        # Download processed video (required)
+        s3_client.download_file(app_settings.S3_BUCKET_NAME, processed_key, processed_path)
+        
+        # Download original video if available
+        if original_key:
+            s3_client.download_file(app_settings.S3_BUCKET_NAME, original_key, original_path)
+        else:
+            # If no original, use processed video for both sides (just as a fallback)
+            logger.warning("No original video found, using processed video for both sides")
+            original_path = processed_path
+        
+        # Create side-by-side comparison with labels using FFmpeg
+        logger.info("Creating side-by-side comparison with labels", job_id=job_id)
+        
+        import subprocess
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-i', original_path,
+            '-i', processed_path,
+            '-filter_complex',
+            # Scale each video to half width
+            '[0:v]scale=iw/2:ih[left];'
+            '[1:v]scale=iw/2:ih[right];'
+            # Add "ORIGINAL" label to left video
+            '[left]drawtext=text=\'ORIGINAL\':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=30[left_labeled];'
+            # Add "ENHANCED" label to right video
+            '[right]drawtext=text=\'ENHANCED\':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.5:boxborderw=10:x=(w-text_w)/2:y=30[right_labeled];'
+            # Combine side-by-side
+            '[left_labeled][right_labeled]hstack=inputs=2',
+            '-c:v', 'libx264',
+            '-crf', '23',
+            '-preset', 'medium',
+            '-c:a', 'copy',
+            '-y',
+            comparison_path
+        ]
+        
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error("FFmpeg comparison failed", 
+                        error=result.stderr,
+                        job_id=job_id)
+            raise HTTPException(status_code=500, detail=f"FFmpeg error: {result.stderr}")
+        
+        # Upload comparison video to S3
+        logger.info("Uploading comparison video", job_id=job_id)
+        s3_client.upload_file(
+            comparison_path,
+            app_settings.S3_BUCKET_NAME,
+            comparison_key,
+            ExtraArgs={'ContentType': 'video/mp4'}
+        )
+        
+        # Generate public URL
+        comparison_url = f"https://{app_settings.S3_BUCKET_NAME}.s3.{app_settings.AWS_REGION}.amazonaws.com/{comparison_key}"
+        
+        # Update job store if job exists
+        if job_id in job_store:
+            job_store[job_id]["comparison_video_url"] = comparison_url
+        
+        logger.info("Comparison video created successfully",
+                   job_id=job_id,
+                   url=comparison_url)
+        
+        return {
+            "comparisonUrl": comparison_url,
+            "jobId": job_id
+        }
+        
+    except Exception as e:
+        logger.error("comparison_creation_error", error=str(e), job_id=job_id)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Clean up temp files
+        for path in [original_path, processed_path, comparison_path]:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up {path}: {str(e)}")
