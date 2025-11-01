@@ -46,7 +46,9 @@ class StorageService:
     def __init__(self):
         self.mock_mode = settings.STORAGE_MOCK_MODE or settings.MOCK_PROVIDERS
         self.bucket = settings.STORAGE_BUCKET
+        self.screenplay_bucket = settings.SCREENPLAY_BUCKET
         self.public_endpoint = settings.STORAGE_PUBLIC_ENDPOINT
+        self.screenplay_public_endpoint = settings.SCREENPLAY_PUBLIC_ENDPOINT
         
         # Always initialize s3_client, even in mock mode
         self.s3_client = boto3.client(
@@ -57,24 +59,25 @@ class StorageService:
             region_name="us-east-1"  # Default region, doesn't matter for MinIO
         )
             
-        # Ensure bucket exists if not in mock mode
+        # Ensure buckets exist if not in mock mode
         if not self.mock_mode:
-            self._ensure_bucket()
+            self._ensure_bucket(self.bucket)
+            self._ensure_bucket(self.screenplay_bucket)
         else:
             logger.info("storage_mock_mode", message="Using mock storage mode - real S3 client created but operations will be limited")
     
-    def _ensure_bucket(self) -> None:
+    def _ensure_bucket(self, bucket_name: str) -> None:
         """Ensure the storage bucket exists"""
         try:
-            self.s3_client.head_bucket(Bucket=self.bucket)
+            self.s3_client.head_bucket(Bucket=bucket_name)
         except ClientError as e:
             if e.response["Error"]["Code"] == "404":
                 # Bucket doesn't exist, create it
-                self.s3_client.create_bucket(Bucket=self.bucket)
+                self.s3_client.create_bucket(Bucket=bucket_name)
                 
                 # Set public read policy for the bucket
                 self.s3_client.put_bucket_policy(
-                    Bucket=self.bucket,
+                    Bucket=bucket_name,
                     Policy=f'''{{
                         "Version": "2012-10-17",
                         "Statement": [
@@ -83,16 +86,28 @@ class StorageService:
                                 "Effect": "Allow",
                                 "Principal": "*",
                                 "Action": ["s3:GetObject"],
-                                "Resource": ["arn:aws:s3:::{self.bucket}/*"]
+                                "Resource": ["arn:aws:s3:::{bucket_name}/*"]
                             }}
                         ]
                     }}'''
                 )
                 
-                logger.info("storage_bucket_created", bucket=self.bucket)
+                logger.info("storage_bucket_created", bucket=bucket_name)
             else:
                 logger.error("storage_bucket_check_failed", error=str(e))
                 raise StorageError(f"Failed to check storage bucket: {str(e)}")
+    
+    def _get_bucket_for_kind(self, kind: PresignKind) -> str:
+        """Get the appropriate bucket name based on file kind"""
+        if kind == PresignKind.SCREENPLAY:
+            return self.screenplay_bucket
+        return self.bucket
+    
+    def _get_endpoint_for_kind(self, kind: PresignKind) -> str:
+        """Get the appropriate public endpoint based on file kind"""
+        if kind == PresignKind.SCREENPLAY:
+            return self.screenplay_public_endpoint
+        return self.public_endpoint
     
     def generate_key(self, kind: PresignKind, filename: str) -> str:
         """
@@ -147,7 +162,7 @@ class StorageService:
         Returns (uploadUrl, fileUrl) tuple
         
         Args:
-            kind: Type of file (IMAGE, AUDIO, VIDEO)
+            kind: Type of file (IMAGE, AUDIO, VIDEO, SCREENPLAY)
             filename: Original filename
             mime: MIME type of the file
             content_length: Size of file in bytes, used to validate against size limits
@@ -158,16 +173,20 @@ class StorageService:
         # Generate storage key
         key = self.generate_key(kind, filename)
         
+        # Get the appropriate bucket and endpoint for this file kind
+        bucket = self._get_bucket_for_kind(kind)
+        public_endpoint = self._get_endpoint_for_kind(kind)
+        
         try:
             if self.mock_mode:
                 # In mock mode, return fake URLs that point to the key
-                upload_url = f"http://mock-storage/{self.bucket}/{key}"
-                file_url = f"http://mock-storage/{self.bucket}/{key}"
-                logger.info("mock_presigned_url_created", kind=kind, key=key)
+                upload_url = f"http://mock-storage/{bucket}/{key}"
+                file_url = f"http://mock-storage/{bucket}/{key}"
+                logger.info("mock_presigned_url_created", kind=kind, key=key, bucket=bucket)
             else:
                 # Prepare parameters for presigned URL
                 params = {
-                    "Bucket": self.bucket,
+                    "Bucket": bucket,
                     "Key": key,
                     "ContentType": mime
                 }
@@ -184,14 +203,14 @@ class StorageService:
                 )
                 
                 # Generate public URL for file access
-                file_url = f"{self.public_endpoint}/{key}"
+                file_url = f"{public_endpoint}/{key}"
                 
-                logger.info("presigned_url_created", kind=kind, key=key)
+                logger.info("presigned_url_created", kind=kind, key=key, bucket=bucket)
             
             return upload_url, file_url
             
         except ClientError as e:
-            logger.error("presign_failed", error=str(e))
+            logger.error("presign_failed", error=str(e), bucket=bucket)
             raise StorageError(f"Failed to generate presigned URL: {str(e)}")
     
     def get_file_url(self, key: str) -> str:
@@ -204,31 +223,34 @@ class StorageService:
         Generate a presigned GET URL for accessing a file
         
         Args:
-            key: The storage key of the file
+            key: The storage key of the file (e.g., "screenplay/abc.pdf")
             expires_in: Expiration time in seconds
             
         Returns:
             Presigned URL for GET access
         """
+        # Determine bucket based on key prefix
+        bucket = self.screenplay_bucket if key.startswith("screenplay/") else self.bucket
+        
         if self.mock_mode:
-            return f"http://mock-storage/{self.bucket}/{key}"
+            return f"http://mock-storage/{bucket}/{key}"
         
         try:
             # Create presigned GET URL
             url = self.s3_client.generate_presigned_url(
                 "get_object",
                 Params={
-                    "Bucket": self.bucket,
+                    "Bucket": bucket,
                     "Key": key
                 },
                 ExpiresIn=expires_in
             )
             
-            logger.info("presigned_get_url_created", key=key, expires_in=expires_in)
+            logger.info("presigned_get_url_created", key=key, bucket=bucket, expires_in=expires_in)
             return url
             
         except ClientError as e:
-            logger.error("presign_get_failed", error=str(e), key=key)
+            logger.error("presign_get_failed", error=str(e), key=key, bucket=bucket)
             raise StorageError(f"Failed to generate presigned GET URL: {str(e)}")
     
     def upload_file(self, file_path: str, kind: PresignKind) -> Tuple[str, str]:
@@ -266,11 +288,14 @@ class StorageService:
             # Generate storage key
             key = self.generate_key(kind, filename)
             
+            # Get the appropriate bucket for this file kind
+            bucket = self._get_bucket_for_kind(kind)
+            
             if not self.mock_mode:
                 # Upload file to S3 when not in mock mode
                 self.s3_client.upload_file(
                     Filename=file_path,
-                    Bucket=self.bucket,
+                    Bucket=bucket,
                     Key=key,
                     ExtraArgs={"ContentType": mime_type}
                 )
@@ -280,7 +305,7 @@ class StorageService:
             # Generate public URL
             file_url = self.get_file_url(key)
             
-            logger.info("file_uploaded", kind=kind, key=key, size=file_size)
+            logger.info("file_uploaded", kind=kind, key=key, size=file_size, bucket=bucket)
             
             return key, file_url
             
@@ -326,10 +351,13 @@ class StorageService:
             # Generate storage key
             key = self.generate_key(kind, filename)
             
+            # Get the appropriate bucket for this file kind
+            bucket = self._get_bucket_for_kind(kind)
+            
             if not self.mock_mode:
                 # Upload bytes to S3 when not in mock mode
                 self.s3_client.put_object(
-                    Bucket=self.bucket,
+                    Bucket=bucket,
                     Key=key,
                     Body=data,
                     ContentType=content_type
@@ -340,7 +368,7 @@ class StorageService:
             # Generate public URL
             file_url = self.get_file_url(key)
             
-            logger.info("bytes_uploaded", kind=kind, key=key, size=file_size)
+            logger.info("bytes_uploaded", kind=kind, key=key, size=file_size, bucket=bucket)
             
             return file_url
             

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     S3_BUCKET_NAME: str = "ted-talks-videos"  # Your actual S3 bucket name
     
+    # Screenplay/Script Storage (separate bucket)
+    SCREENPLAY_BUCKET: str = "scriptbreaker"  # Separate bucket for screenplay PDFs
+    SCREENPLAY_PUBLIC_ENDPOINT: str = "https://scriptbreaker.s3.us-west-2.amazonaws.com"
+    
     # Provider API keys (set to None to use mock mode)
     VEO3_API_KEY: Optional[str] = None
     VEO3_MOCK_MODE: bool = True

@@ -32,39 +32,40 @@ class PDFProcessor:
         try:
             # Special handling for S3 URLs
             logger.info("processing_pdf_url", url=pdf_url)
-            if "s3.amazonaws.com" in pdf_url or ".s3.amazonaws.com" in pdf_url:
+            if "s3.amazonaws.com" in pdf_url or ".s3.amazonaws.com" in pdf_url or ".s3.us-" in pdf_url:
                 try:
-                    # Extract the key directly from the URL - handles both URL formats:
+                    # Extract the key directly from the URL - handles multiple formats:
                     # https://s3.amazonaws.com/bucket-name/key
                     # https://bucket-name.s3.amazonaws.com/key
+                    # https://bucket-name.s3.us-east-1.amazonaws.com/key (regional)
+                    
+                    key = None
                     
                     if "https://s3.amazonaws.com/" in pdf_url:
                         # Format: https://s3.amazonaws.com/bucket-name/key
                         parts = pdf_url.split("https://s3.amazonaws.com/")
                         if len(parts) > 1:
                             path = parts[1].split("?")[0]  # Remove query parameters
-                            parts = path.split("/", 1)
-                            bucket_name = parts[0]
-                            key = parts[1] if len(parts) > 1 else ""
-                    elif ".s3.amazonaws.com/" in pdf_url:
-                        # Format: https://bucket-name.s3.amazonaws.com/key
-                        parts = pdf_url.split(".s3.amazonaws.com/")
+                            path_parts = path.split("/", 1)
+                            key = path_parts[1] if len(path_parts) > 1 else ""
+                    elif ".s3." in pdf_url and ".amazonaws.com/" in pdf_url:
+                        # Format: https://bucket-name.s3.region.amazonaws.com/key or https://bucket-name.s3.amazonaws.com/key
+                        # Split on amazonaws.com/ to get the key
+                        parts = pdf_url.split(".amazonaws.com/")
                         if len(parts) > 1:
-                            bucket_parts = parts[0].split("//")
-                            bucket_name = bucket_parts[-1]
                             key = parts[1].split("?")[0]  # Remove query parameters
                     
-                    # If the key doesn't contain 'screenplay/', add it as a prefix
-                    if key and not key.startswith("screenplay/"):
-                        key = f"screenplay/{key}"
+                    if not key:
+                        logger.warning("could_not_extract_key", url=pdf_url)
+                        raise ValueError("Could not extract S3 key from URL")
                     
-                    logger.info("extracted_s3_info", bucket=bucket_name, key=key)
+                    logger.info("extracted_s3_key", key=key)
                     
                     # Create a presigned URL for GET access
                     storage_service = StorageService()
                     presigned_url = storage_service.create_presigned_get_url(key)
                     pdf_url = presigned_url  # Use the presigned URL instead
-                    logger.info("using_presigned_url", presigned_url=presigned_url, key=key)
+                    logger.info("using_presigned_url", key=key)
                 except Exception as e:
                     logger.error("presigned_url_creation_failed", error=str(e), url=pdf_url)
                     # Continue with original URL if extraction fails

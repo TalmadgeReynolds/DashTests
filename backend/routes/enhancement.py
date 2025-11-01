@@ -730,8 +730,10 @@ async def create_comparison_video(request: CreateComparisonRequest) -> Dict:
     processed_key = f"processed/{job_id}.mp4"
     try:
         s3_client.head_object(Bucket=app_settings.S3_BUCKET_NAME, Key=processed_key)
-    except:
-        raise HTTPException(status_code=404, detail="Processed video not found in S3")
+        logger.info("Found processed video in S3", key=processed_key)
+    except Exception as e:
+        logger.warning("Processed video not found, will try to proceed anyway", key=processed_key, error=str(e))
+        # Don't fail here - the video might exist with a different extension or the user uploaded it manually
     
     comparison_key = f"comparisons/{job_id}_comparison.mp4"
     
@@ -743,11 +745,51 @@ async def create_comparison_video(request: CreateComparisonRequest) -> Dict:
         logger.info("Downloading videos for comparison", job_id=job_id, has_original=bool(original_key))
         
         # Download processed video (required)
-        s3_client.download_file(app_settings.S3_BUCKET_NAME, processed_key, processed_path)
+        try:
+            logger.info("Attempting to download processed video", 
+                       bucket=app_settings.S3_BUCKET_NAME, 
+                       key=processed_key,
+                       local_path=processed_path)
+            s3_client.download_file(app_settings.S3_BUCKET_NAME, processed_key, processed_path)
+            logger.info("Downloaded processed video successfully", path=processed_path)
+        except Exception as e:
+            logger.error("Failed to download processed video", 
+                        error=str(e), 
+                        error_type=type(e).__name__,
+                        key=processed_key,
+                        bucket=app_settings.S3_BUCKET_NAME)
+            # Try to list what's actually in the processed folder
+            try:
+                list_resp = s3_client.list_objects_v2(
+                    Bucket=app_settings.S3_BUCKET_NAME,
+                    Prefix=f"processed/{job_id}",
+                    MaxKeys=10
+                )
+                if 'Contents' in list_resp:
+                    actual_keys = [obj['Key'] for obj in list_resp['Contents']]
+                    logger.info("Found similar keys in S3", keys=actual_keys)
+                else:
+                    logger.warning("No files found with prefix", prefix=f"processed/{job_id}")
+            except Exception as list_err:
+                logger.error("Could not list S3 contents", error=str(list_err))
+            
+            raise HTTPException(status_code=404, detail=f"Could not download processed video: {str(e)}")
         
         # Download original video if available
         if original_key:
-            s3_client.download_file(app_settings.S3_BUCKET_NAME, original_key, original_path)
+            try:
+                logger.info("Attempting to download original video", 
+                           bucket=app_settings.S3_BUCKET_NAME,
+                           key=original_key,
+                           local_path=original_path)
+                s3_client.download_file(app_settings.S3_BUCKET_NAME, original_key, original_path)
+                logger.info("Downloaded original video successfully", path=original_path)
+            except Exception as e:
+                logger.warning("Could not download original video, using processed for both sides", 
+                             error=str(e),
+                             key=original_key)
+                # If original download fails, use processed video for both sides
+                original_path = processed_path
         else:
             # If no original, use processed video for both sides (just as a fallback)
             logger.warning("No original video found, using processed video for both sides")
