@@ -7,10 +7,42 @@ export interface PostFX {
   upscale: boolean;
 }
 
+export interface ReferenceImage {
+  image_url?: string;
+  image_base64?: string;
+  reference_type: 'asset' | 'style';
+}
+
 export interface VideoOpts {
-  fps: 24 | 30;
-  aspect: '16:9' | '9:16' | '1:1';
-  max_duration: number;
+  // Legacy settings (for backward compatibility with Heygen)
+  fps?: 24 | 30;
+  aspect: '16:9' | '9:16' | '1:1';  // '1:1' supported by Heygen but not Veo
+  max_duration?: number;
+  
+  // Veo 3 specific settings
+  model_id?: string;
+  duration_seconds?: 4 | 6 | 8;
+  resolution?: '720p' | '1080p';
+  generate_audio?: boolean;
+  
+  // Video generation modes
+  input_image_url?: string;
+  input_video_url?: string;
+  last_frame_url?: string;
+  mask_url?: string;
+  mask_mode?: string;
+  
+  // Reference images
+  reference_images?: ReferenceImage[];
+  
+  // Control parameters
+  enhance_prompt?: boolean;
+  negative_prompt?: string;
+  seed?: number;
+  person_generation?: 'allow_adult' | 'allow_all' | 'dont_allow';
+  compression_quality?: 'optimized' | 'lossless';
+  resize_mode?: 'pad' | 'crop';
+  sample_count?: number;
 }
 
 export interface TTSRequest {

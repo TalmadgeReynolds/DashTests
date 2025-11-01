@@ -70,11 +70,37 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
   const [referenceImageUrl, setReferenceImageUrl] = useState('');
   const [portraitPrompt, setPortraitPrompt] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [fps, setFps] = useState<24 | 30>(24);
-  const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1'>('16:9');
-  const [interpolate, setInterpolate] = useState(true);
-  const [upscale, setUpscale] = useState(false);
+  
+  // Multiple reference images (up to 3)
+  const [referenceImages, setReferenceImages] = useState<Array<{
+    url: string;
+    type: 'asset' | 'style';
+  }>>([]);
+  
+  // Basic settings
+  const [aspect, setAspect] = useState<'16:9' | '9:16'>('16:9');
   const [priority, setPriority] = useState<'high' | 'low'>('low');
+  
+  // New Veo 3 settings
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [modelId, setModelId] = useState('veo-3.0-generate-001');
+  const [durationSeconds, setDurationSeconds] = useState<4 | 6 | 8>(8);
+  const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
+  const [generateAudio, setGenerateAudio] = useState(false);
+  const [enhancePrompt, setEnhancePrompt] = useState(true);
+  const [negativePrompt, setNegativePrompt] = useState('');
+  const [seed, setSeed] = useState<number | undefined>(undefined);
+  const [personGeneration, setPersonGeneration] = useState<'allow_adult' | 'allow_all' | 'dont_allow'>('allow_adult');
+  const [compressionQuality, setCompressionQuality] = useState<'optimized' | 'lossless'>('optimized');
+  const [resizeMode, setResizeMode] = useState<'pad' | 'crop'>('pad');
+  const [sampleCount, setSampleCount] = useState(1);
+  
+  // Advanced video modes
+  const [videoMode, setVideoMode] = useState<'text-to-video' | 'image-to-video' | 'video-extension' | 'frame-interpolation' | 'video-editing'>('text-to-video');
+  const [inputVideoUrl, setInputVideoUrl] = useState('');
+  const [lastFrameUrl, setLastFrameUrl] = useState('');
+  const [maskUrl, setMaskUrl] = useState('');
+  const [maskMode, setMaskMode] = useState('MASK_MODE_USER_PROVIDED');
 
   const createJobMutation = useMutation({
     mutationFn: async (data: CreatePromptJobRequest) => {
@@ -121,13 +147,36 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
       script,
       reference_image_url: referenceImageUrl || undefined,
       post: {
-        interpolate,
-        upscale,
+        interpolate: false,
+        upscale: false,
       },
       video: {
-        fps,
         aspect,
         max_duration: 12,
+        // Veo 3 specific settings
+        model_id: modelId,
+        duration_seconds: durationSeconds,
+        resolution,
+        generate_audio: generateAudio,
+        enhance_prompt: enhancePrompt,
+        negative_prompt: negativePrompt || undefined,
+        seed: seed,
+        person_generation: personGeneration,
+        compression_quality: compressionQuality,
+        resize_mode: resizeMode,
+        sample_count: sampleCount,
+        // Advanced video modes
+        input_video_url: inputVideoUrl || undefined,
+        last_frame_url: lastFrameUrl || undefined,
+        mask_url: maskUrl || undefined,
+        mask_mode: videoMode === 'video-editing' ? maskMode : undefined,
+        // Multiple reference images
+        reference_images: referenceImages.length > 0 
+          ? referenceImages.map(img => ({
+              image_url: img.url,
+              reference_type: img.type,
+            }))
+          : undefined,
       },
       priority,
     };
@@ -277,70 +326,482 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
         )}
       </div>
 
-      {/* Video Options */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">FPS</label>
-          <select
-            value={fps}
-            onChange={(e) => setFps(parseInt(e.target.value) as 24 | 30)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value={24}>24 fps</option>
-            <option value={30}>30 fps</option>
-          </select>
+      {/* Multiple Reference Images (Advanced) */}
+      <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium text-gray-700">
+            Additional Reference Images
+            <span className="ml-2 text-xs text-gray-500">(Up to 3 total)</span>
+          </label>
+          <span className="text-xs text-gray-600">{referenceImages.length}/3 used</span>
         </div>
+        <p className="text-xs text-gray-600">
+          Add multiple reference images for consistent subjects (asset) or visual style (style)
+        </p>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Aspect Ratio</label>
-          <select
-            value={aspect}
-            onChange={(e) => setAspect(e.target.value as '16:9' | '9:16' | '1:1')}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait/Shorts)</option>
-            <option value="1:1">1:1 (Square)</option>
-          </select>
-        </div>
+        {/* Existing Reference Images */}
+        {referenceImages.length > 0 && (
+          <div className="space-y-2">
+            {referenceImages.map((img, index) => (
+              <div key={index} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                <img
+                  src={img.url}
+                  alt={`Reference ${index + 1}`}
+                  className="w-16 h-16 object-cover rounded"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      img.type === 'asset' 
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-orange-100 text-orange-700'
+                    }`}>
+                      {img.type === 'asset' ? 'Asset' : 'Style'}
+                    </span>
+                    <span className="text-xs text-gray-500">Image {index + 1}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReferenceImages(referenceImages.filter((_, i) => i !== index));
+                  }}
+                  className="text-red-600 hover:text-red-700 text-sm"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add New Reference Image */}
+        {referenceImages.length < 3 && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Image Type</label>
+                <select
+                  id="newRefImageType"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                  defaultValue="asset"
+                >
+                  <option value="asset">Asset (Subject/Object)</option>
+                  <option value="style">Style (Visual Style)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Upload Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    const typeSelect = document.getElementById('newRefImageType') as HTMLSelectElement;
+                    const imageType = (typeSelect?.value || 'asset') as 'asset' | 'style';
+                    
+                    if (file && referenceImages.length < 3) {
+                      try {
+                        const { url } = await getPresignedUrl({
+                          filename: file.name,
+                          mime: file.type,
+                          kind: 'reference_image',
+                          content_length: file.size,
+                        });
+                        await uploadToPresignedUrl(url, file);
+                        const uploadedUrl = url.split('?')[0];
+                        
+                        setReferenceImages([...referenceImages, {
+                          url: uploadedUrl,
+                          type: imageType,
+                        }]);
+                        
+                        // Reset the file input
+                        e.target.value = '';
+                      } catch (error) {
+                        console.error('Failed to upload reference image:', error);
+                        alert('Failed to upload image. Please try again.');
+                      }
+                    }
+                  }}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              <strong>Asset:</strong> Use for consistent subjects, objects, or characters. 
+              <strong className="ml-2">Style:</strong> Use for consistent visual style across videos.
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Post-Processing */}
+      {/* Video Generation Mode */}
       <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700">Post-Processing Enhancement</label>
-        <div className="bg-gray-50 p-3 rounded-lg space-y-3">
-          <div className="flex items-start gap-2">
+        <label className="block text-sm font-medium text-gray-700">Video Generation Mode</label>
+        <select
+          value={videoMode}
+          onChange={(e) => setVideoMode(e.target.value as 'text-to-video' | 'image-to-video' | 'video-extension' | 'frame-interpolation' | 'video-editing')}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="text-to-video">Text to Video</option>
+          <option value="image-to-video">Image to Video</option>
+          <option value="video-extension">Video Extension</option>
+          <option value="frame-interpolation">Frame Interpolation</option>
+          <option value="video-editing">Video Editing with Masks</option>
+        </select>
+
+        {/* Video Extension Mode */}
+        {videoMode === 'video-extension' && (
+          <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
+            <label className="block text-sm font-medium text-gray-700">Input Video</label>
             <input
-              type="checkbox"
-              id="interpolate1"
-              checked={interpolate}
-              onChange={(e) => setInterpolate(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+              type="file"
+              accept="video/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  try {
+                    const { url } = await getPresignedUrl({
+                      filename: file.name,
+                      mime: file.type,
+                      kind: 'input_video',
+                      content_length: file.size,
+                    });
+                    await uploadToPresignedUrl(url, file);
+                    const uploadedUrl = url.split('?')[0];
+                    setInputVideoUrl(uploadedUrl);
+                  } catch (error) {
+                    console.error('Failed to upload video:', error);
+                    alert('Failed to upload video. Please try again.');
+                  }
+                }
+              }}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
             />
-            <div className="flex-1">
-              <label htmlFor="interpolate1" className="text-sm font-medium text-gray-900">
-                Frame Interpolation <span className="text-xs font-normal text-purple-600">(RIFE)</span>
-              </label>
-              <p className="text-xs text-gray-500 mt-0.5">Smooth motion, reduce wobble</p>
-            </div>
+            <p className="text-xs text-gray-500">Upload a video to extend beyond its ending</p>
+            {inputVideoUrl && <p className="text-xs text-green-600">✓ Video uploaded</p>}
           </div>
-          <div className="flex items-start gap-2">
+        )}
+
+        {/* Frame Interpolation Mode */}
+        {videoMode === 'frame-interpolation' && (
+          <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
+            <label className="block text-sm font-medium text-gray-700">Last Frame Image</label>
             <input
-              type="checkbox"
-              id="upscale1"
-              checked={upscale}
-              onChange={(e) => setUpscale(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  try {
+                    const { url } = await getPresignedUrl({
+                      filename: file.name,
+                      mime: file.type,
+                      kind: 'last_frame',
+                      content_length: file.size,
+                    });
+                    await uploadToPresignedUrl(url, file);
+                    const uploadedUrl = url.split('?')[0];
+                    setLastFrameUrl(uploadedUrl);
+                  } catch (error) {
+                    console.error('Failed to upload image:', error);
+                    alert('Failed to upload image. Please try again.');
+                  }
+                }
+              }}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
             />
-            <div className="flex-1">
-              <label htmlFor="upscale1" className="text-sm font-medium text-gray-900">
-                Upscale Video <span className="text-xs font-normal text-purple-600">(Topaz/Real-ESRGAN)</span>
-              </label>
-              <p className="text-xs text-gray-500 mt-0.5">Higher resolution, enhanced detail</p>
+            <p className="text-xs text-gray-500">Upload the last frame to interpolate from reference to this frame</p>
+            {lastFrameUrl && <p className="text-xs text-green-600">✓ Last frame uploaded</p>}
+          </div>
+        )}
+
+        {/* Video Editing with Masks Mode */}
+        {videoMode === 'video-editing' && (
+          <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Input Video</label>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    try {
+                      const { url } = await getPresignedUrl({
+                        filename: file.name,
+                        mime: file.type,
+                        kind: 'input_video',
+                        content_length: file.size,
+                      });
+                      await uploadToPresignedUrl(url, file);
+                      const uploadedUrl = url.split('?')[0];
+                      setInputVideoUrl(uploadedUrl);
+                    } catch (error) {
+                      console.error('Failed to upload video:', error);
+                      alert('Failed to upload video. Please try again.');
+                    }
+                  }
+                }}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+              />
+              {inputVideoUrl && <p className="text-xs text-green-600 mt-1">✓ Video uploaded</p>}
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Mask Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    try {
+                      const { url } = await getPresignedUrl({
+                        filename: file.name,
+                        mime: file.type,
+                        kind: 'mask',
+                        content_length: file.size,
+                      });
+                      await uploadToPresignedUrl(url, file);
+                      const uploadedUrl = url.split('?')[0];
+                      setMaskUrl(uploadedUrl);
+                    } catch (error) {
+                      console.error('Failed to upload mask:', error);
+                      alert('Failed to upload mask. Please try again.');
+                    }
+                  }
+                }}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+              />
+              {maskUrl && <p className="text-xs text-green-600 mt-1">✓ Mask uploaded</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Mask Mode</label>
+              <select
+                value={maskMode}
+                onChange={(e) => setMaskMode(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="MASK_MODE_USER_PROVIDED">User Provided</option>
+                <option value="MASK_MODE_BACKGROUND">Background</option>
+                <option value="MASK_MODE_FOREGROUND">Foreground</option>
+                <option value="MASK_MODE_SEMANTIC">Semantic</option>
+              </select>
+            </div>
+
+            <p className="text-xs text-gray-500">Upload a video and mask to edit specific regions</p>
+          </div>
+        )}
+      </div>
+
+      {/* Veo 3 Video Settings */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium text-gray-700">Veo 3 Video Settings</label>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            {showAdvanced ? (
+              <>
+                <ChevronUpIcon className="w-4 h-4" />
+                Hide Advanced
+              </>
+            ) : (
+              <>
+                <ChevronDownIcon className="w-4 h-4" />
+                Show Advanced
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
+            <select
+              value={durationSeconds}
+              onChange={(e) => setDurationSeconds(parseInt(e.target.value) as 4 | 6 | 8)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={4}>4 seconds</option>
+              <option value={6}>6 seconds</option>
+              <option value={8}>8 seconds</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Aspect Ratio</label>
+            <select
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value as '16:9' | '9:16')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="16:9">16:9 (Landscape)</option>
+              <option value="9:16">9:16 (Portrait)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Resolution</label>
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value as '720p' | '1080p')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="720p">720p (Faster)</option>
+              <option value="1080p">1080p (Higher Quality)</option>
+            </select>
           </div>
         </div>
-        <p className="text-xs text-gray-500 italic">💡 Recommended: Enable interpolation before upscaling for best results</p>
+
+        {/* Audio Generation */}
+        <div className="flex items-start gap-2 bg-blue-50 p-3 rounded-lg">
+          <input
+            type="checkbox"
+            id="generateAudio"
+            checked={generateAudio}
+            onChange={(e) => setGenerateAudio(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+          />
+          <div className="flex-1">
+            <label htmlFor="generateAudio" className="text-sm font-medium text-gray-900">
+              Generate Audio 🔊 <span className="text-xs font-normal text-blue-600">(NEW)</span>
+            </label>
+            <p className="text-xs text-gray-600 mt-0.5">Add AI-generated audio to match the video content</p>
+          </div>
+        </div>
+
+        {/* Advanced Settings */}
+        {showAdvanced && (
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-900">Advanced Veo 3 Settings</h3>
+            
+            {/* Model Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Veo Model</label>
+              <select
+                value={modelId}
+                onChange={(e) => setModelId(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="veo-3.0-generate-001">Veo 3.0 (Standard)</option>
+                <option value="veo-3.0-fast-generate-001">Veo 3.0 Fast</option>
+                <option value="veo-2.0-generate-001">Veo 2.0</option>
+              </select>
+            </div>
+
+            {/* Negative Prompt */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Negative Prompt</label>
+              <input
+                type="text"
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+                placeholder="What to avoid in the video (e.g., blurry, distorted)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Prompt Enhancement */}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="enhancePrompt"
+                  checked={enhancePrompt}
+                  onChange={(e) => setEnhancePrompt(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+                />
+                <div className="flex-1">
+                  <label htmlFor="enhancePrompt" className="text-sm font-medium text-gray-900">
+                    Enhance Prompt with Gemini ✨
+                  </label>
+                  <p className="text-xs text-gray-500 mt-0.5">Use AI to improve your prompt</p>
+                </div>
+              </div>
+
+              {/* Sample Count */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Videos to Generate</label>
+                <select
+                  value={sampleCount}
+                  onChange={(e) => setSampleCount(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={1}>1 video</option>
+                  <option value={2}>2 videos</option>
+                  <option value={3}>3 videos</option>
+                  <option value={4}>4 videos</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Person Generation */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Person Generation</label>
+                <select
+                  value={personGeneration}
+                  onChange={(e) => setPersonGeneration(e.target.value as 'allow_adult' | 'allow_all' | 'dont_allow')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="allow_adult">Adults Only</option>
+                  <option value="allow_all">All Ages</option>
+                  <option value="dont_allow">No People</option>
+                </select>
+              </div>
+
+              {/* Compression Quality */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Compression Quality</label>
+                <select
+                  value={compressionQuality}
+                  onChange={(e) => setCompressionQuality(e.target.value as 'optimized' | 'lossless')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="optimized">Optimized (Smaller files)</option>
+                  <option value="lossless">Lossless (Best quality)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Seed for Reproducibility */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seed (Optional) - For reproducible results
+              </label>
+              <input
+                type="number"
+                value={seed || ''}
+                onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : undefined)}
+                placeholder="Leave empty for random"
+                min={0}
+                max={4294967295}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Resize Mode for Image-to-Video */}
+            {referenceImageUrl && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Image Resize Mode</label>
+                <select
+                  value={resizeMode}
+                  onChange={(e) => setResizeMode(e.target.value as 'pad' | 'crop')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="pad">Pad (Keep entire image)</option>
+                  <option value="crop">Crop (Fill frame)</option>
+                </select>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Priority */}
@@ -394,8 +855,6 @@ function Option2Form({ onSuccess }: { onSuccess: (jobId: string) => void }) {
   // Video settings
   const [fps, setFps] = useState<24 | 30>(24);
   const [aspect, setAspect] = useState<'16:9' | '9:16' | '1:1'>('16:9');
-  const [interpolate, setInterpolate] = useState(true);
-  const [upscale, setUpscale] = useState(false);
   const [priority, setPriority] = useState<'high' | 'low'>('low');
 
   // Audio settings
@@ -511,8 +970,8 @@ function Option2Form({ onSuccess }: { onSuccess: (jobId: string) => void }) {
         } : undefined,
         action_prompt: actionPrompt || undefined,
         post: {
-          interpolate,
-          upscale,
+          interpolate: false,
+          upscale: false,
         },
         video: {
           fps,
@@ -889,44 +1348,6 @@ function Option2Form({ onSuccess }: { onSuccess: (jobId: string) => void }) {
             <option value="1:1">1:1 (Square)</option>
           </select>
         </div>
-      </div>
-
-      {/* Post-Processing */}
-      <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700">Post-Processing Enhancement</label>
-        <div className="bg-gray-50 p-3 rounded-lg space-y-3">
-          <div className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              id="interpolate2"
-              checked={interpolate}
-              onChange={(e) => setInterpolate(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
-            />
-            <div className="flex-1">
-              <label htmlFor="interpolate2" className="text-sm font-medium text-gray-900">
-                Frame Interpolation <span className="text-xs font-normal text-purple-600">(RIFE)</span>
-              </label>
-              <p className="text-xs text-gray-500 mt-0.5">Smooth motion, reduce wobble (recommended for Heygen)</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              id="upscale2"
-              checked={upscale}
-              onChange={(e) => setUpscale(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
-            />
-            <div className="flex-1">
-              <label htmlFor="upscale2" className="text-sm font-medium text-gray-900">
-                Upscale Video <span className="text-xs font-normal text-purple-600">(Topaz/Real-ESRGAN)</span>
-              </label>
-              <p className="text-xs text-gray-500 mt-0.5">Higher resolution, enhanced detail</p>
-            </div>
-          </div>
-        </div>
-        <p className="text-xs text-gray-500 italic">💡 Recommended: Enable interpolation before upscaling for best results</p>
       </div>
 
       {/* Priority */}

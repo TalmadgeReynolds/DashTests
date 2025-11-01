@@ -413,76 +413,136 @@ class Orchestrator:
         asyncio.create_task(update_job_with_ws(job.id, "ERROR", None))
     
     async def _process_prompt_job(self, job: Job) -> None:
-        """Process a prompt-to-lipsync job with Veo 3"""
+        """Process a prompt-to-lipsync job with Veo 3 using full feature set"""
         meta = job.meta
         script = meta["script"]
         reference_image_url = meta.get("reference_image_url")
         
         video_opts = meta.get("video", {})
-        fps = video_opts.get("fps", 24)
-        aspect = video_opts.get("aspect", "16:9")
-        max_duration = video_opts.get("max_duration", 12)
+        
+        # Extract all Veo 3 parameters
+        model_id = video_opts.get("model_id", "veo-3.0-generate-001")
+        aspect_ratio = video_opts.get("aspect", "16:9")
+        duration_seconds = video_opts.get("duration_seconds", 8)
+        resolution = video_opts.get("resolution", "720p")
+        generate_audio = video_opts.get("generate_audio", False)
+        enhance_prompt = video_opts.get("enhance_prompt", True)
+        negative_prompt = video_opts.get("negative_prompt")
+        seed = video_opts.get("seed")
+        person_generation = video_opts.get("person_generation", "allow_adult")
+        compression_quality = video_opts.get("compression_quality", "optimized")
+        resize_mode = video_opts.get("resize_mode", "pad")
+        sample_count = video_opts.get("sample_count", 1)
+        
+        # Video generation modes
+        input_image_url = video_opts.get("input_image_url")
+        input_video_url = video_opts.get("input_video_url")
+        last_frame_url = video_opts.get("last_frame_url")
+        mask_url = video_opts.get("mask_url")
+        mask_mode = video_opts.get("mask_mode")
+        
+        # Reference images
+        reference_images = None
+        if video_opts.get("reference_images"):
+            reference_images = []
+            for ref in video_opts["reference_images"]:
+                ref_data = {
+                    "image": ref.get("image_url") or ref.get("image_base64"),
+                    "referenceType": ref.get("reference_type", "asset")
+                }
+                reference_images.append(ref_data)
         
         now = datetime.utcnow()
         now_iso = now.isoformat()
         
-        # Submit job to Veo 3
-        provider_job_id = self.veo_adapter.create_job(
-            script, 
-            reference_image_url,
-            fps,
-            aspect,
-            max_duration
+        # Submit job to Veo 3 with full feature support
+        operation_name = self.veo_adapter.generate_video(
+            prompt=script,
+            model_id=model_id,
+            input_image=reference_image_url or input_image_url,
+            input_video=input_video_url,
+            last_frame=last_frame_url,
+            mask=mask_url,
+            mask_mode=mask_mode,
+            reference_images=reference_images,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+            resolution=resolution,
+            generate_audio=generate_audio,
+            enhance_prompt=enhance_prompt,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            person_generation=person_generation,
+            compression_quality=compression_quality,
+            resize_mode=resize_mode,
+            sample_count=sample_count
         )
         
-        # Update job with provider job ID and timeline
+        # Update job with operation name and timeline
         if "timeline" not in meta:
             meta["timeline"] = []
             
         meta["timeline"].append({
-            "step": "provider_job_created",
+            "step": "veo_operation_created",
             "ts": now_iso,
-            "data": {"provider": "veo3", "provider_job_id": provider_job_id}
+            "data": {
+                "provider": "veo3",
+                "operation_name": operation_name,
+                "model_id": model_id,
+                "features": {
+                    "audio": generate_audio,
+                    "resolution": resolution,
+                    "duration": duration_seconds,
+                    "mode": "image-to-video" if input_image_url or reference_image_url else "text-to-video"
+                }
+            }
         })
         
-        job.provider_job_id = provider_job_id
+        job.provider_job_id = operation_name
         job.meta = meta
         
         with db_transaction() as session:
             session.add(job)
         
-        log_job_event(str(job.id), "provider_job_created", provider_job_id=provider_job_id)
+        log_job_event(str(job.id), "veo_operation_created", operation_name=operation_name)
         
         # Check initial status
         await self._check_prompt_job_status(job)
     
     async def _check_prompt_job_status(self, job: Job) -> None:
-        """Check the status of a Veo job"""
+        """Check the status of a Veo operation"""
         if not job.provider_job_id:
             logger.error("missing_provider_job_id", job_id=str(job.id))
             self._transition_to_error(job, "Missing provider job ID")
             return
+        
+        meta = job.meta
+        video_opts = meta.get("video", {})
+        model_id = video_opts.get("model_id", "veo-3.0-generate-001")
             
-        # Poll Veo for status
-        result = self.veo_adapter.poll_result(job.provider_job_id)
+        # Poll Veo for operation status
+        result = self.veo_adapter.poll_operation(job.provider_job_id, model_id)
+        done = result.get("done", False)
         status = result["status"]
-        video_url = result.get("video_url")
+        videos = result.get("videos", [])
+        error = result.get("error")
         
         now = datetime.utcnow()
         now_iso = now.isoformat()
         
         # Update timeline with provider status check
-        meta = job.meta
         if "timeline" not in meta:
             meta["timeline"] = []
             
         meta["timeline"].append({
-            "step": "provider_status_check",
+            "step": "veo_operation_status_check",
             "ts": now_iso,
             "data": {
                 "provider": "veo3", 
-                "provider_job_id": job.provider_job_id,
-                "status": status
+                "operation_name": job.provider_job_id,
+                "done": done,
+                "status": status,
+                "video_count": len(videos)
             }
         })
         
@@ -490,16 +550,27 @@ class Orchestrator:
         with db_transaction() as session:
             session.add(job)
         
-        log_job_event(str(job.id), "provider_status", provider_job_id=job.provider_job_id, 
-                      extra={"provider_status": status})
+        log_job_event(str(job.id), "veo_operation_status", operation_name=job.provider_job_id, 
+                      extra={"done": done, "status": status})
         
         if status == "ERROR":
-            self._transition_to_error(job, "Provider job failed")
+            error_msg = error or "Veo operation failed"
+            self._transition_to_error(job, error_msg)
             return
             
-        if status == "DONE" and video_url:
-            # Job completed successfully
-            meta = job.meta
+        if status == "DONE" and videos:
+            # Job completed successfully - get first video URL
+            video = videos[0]
+            video_url = video.get("gcsUri") or video.get("bytesBase64Encoded")
+            
+            # Store all generated videos in metadata
+            meta["generated_videos"] = videos
+            meta["rai_filtered_count"] = result.get("raiMediaFilteredCount", 0)
+            
+            job.meta = meta
+            with db_transaction() as session:
+                session.add(job)
+            
             post_opts = meta.get("post", {})
             
             if post_opts.get("interpolate", True) or post_opts.get("upscale", False):

@@ -11,11 +11,44 @@ class PostFX(BaseModel):
     upscale: bool = Field(default=False, description="Whether to upscale the video")
 
 
+class ReferenceImage(BaseModel):
+    """Reference image for video generation"""
+    image_url: Optional[HttpUrl] = Field(None, description="URL or GCS URI of the reference image")
+    image_base64: Optional[str] = Field(None, description="Base64-encoded image data")
+    reference_type: Literal["asset", "style"] = Field(default="asset", description="Type of reference: asset for subjects/objects, style for visual style")
+
+
 class VideoOpts(BaseModel):
-    """Video options as defined in OpenAPI schema"""
-    fps: Literal[24, 30] = Field(default=24, description="Frames per second")
-    aspect: Literal["16:9", "9:16", "1:1"] = Field(default="16:9", description="Aspect ratio")
-    max_duration: int = Field(default=12, description="Maximum duration in seconds")
+    """Video options with full Veo 3 feature support"""
+    # Basic settings (legacy - for backward compatibility with Heygen)
+    fps: Optional[Literal[24, 30]] = Field(default=24, description="Frames per second (legacy, not used by Veo)")
+    aspect: Literal["16:9", "9:16", "1:1"] = Field(default="16:9", description="Aspect ratio (1:1 for Heygen only)")
+    max_duration: int = Field(default=8, description="Maximum duration in seconds (legacy)")
+    
+    # Veo 3 specific settings
+    model_id: str = Field(default="veo-3.0-generate-001", description="Veo model to use")
+    duration_seconds: Literal[4, 6, 8] = Field(default=8, description="Video duration in seconds")
+    resolution: Literal["720p", "1080p"] = Field(default="720p", description="Output resolution")
+    generate_audio: bool = Field(default=False, description="Generate audio for the video")
+    
+    # Video generation modes
+    input_image_url: Optional[HttpUrl] = Field(None, description="Input image URL for image-to-video")
+    input_video_url: Optional[HttpUrl] = Field(None, description="Input video URL for video extension")
+    last_frame_url: Optional[HttpUrl] = Field(None, description="Last frame URL for frame interpolation")
+    mask_url: Optional[HttpUrl] = Field(None, description="Mask URL for video editing")
+    mask_mode: Optional[str] = Field(None, description="Mask mode: MASK_MODE_USER_PROVIDED, etc.")
+    
+    # Reference images for consistency
+    reference_images: Optional[List[ReferenceImage]] = Field(None, description="Up to 3 asset or 1 style reference images")
+    
+    # Control parameters
+    enhance_prompt: bool = Field(default=True, description="Use Gemini to enhance prompts")
+    negative_prompt: Optional[str] = Field(None, description="What to avoid in the video")
+    seed: Optional[int] = Field(None, ge=0, le=4294967295, description="Seed for reproducibility")
+    person_generation: Literal["allow_adult", "allow_all", "dont_allow"] = Field(default="allow_adult", description="Person generation setting")
+    compression_quality: Literal["optimized", "lossless"] = Field(default="optimized", description="Video compression quality")
+    resize_mode: Literal["pad", "crop"] = Field(default="pad", description="Resize mode for image-to-video")
+    sample_count: int = Field(default=1, ge=1, le=4, description="Number of videos to generate (1-4)")
 
 
 class TTSRequest(BaseModel):
