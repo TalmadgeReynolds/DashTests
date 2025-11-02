@@ -24,13 +24,22 @@ export const screenplayKeys = {
 
 // API functions
 async function fetchScreenplays(skip = 0, limit = 50): Promise<ScreenplayListResponse> {
-  const response = await fetch(
-    `${ENDPOINTS.SCREENPLAYS}?skip=${skip}&limit=${limit}`
-  );
-  if (!response.ok) {
-    throw new Error('Failed to fetch screenplays');
+  console.log('fetchScreenplays: Starting request to', `${ENDPOINTS.SCREENPLAYS}?skip=${skip}&limit=${limit}`);
+  try {
+    const response = await fetch(
+      `${ENDPOINTS.SCREENPLAYS}?skip=${skip}&limit=${limit}`
+    );
+    console.log('fetchScreenplays: Response status', response.status);
+    if (!response.ok) {
+      throw new Error('Failed to fetch screenplays');
+    }
+    const data = await response.json();
+    console.log('fetchScreenplays: Received data', data);
+    return data;
+  } catch (error) {
+    console.error('fetchScreenplays: Error', error);
+    throw error;
   }
-  return response.json();
 }
 
 async function fetchScreenplay(id: string): Promise<Screenplay> {

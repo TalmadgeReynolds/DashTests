@@ -36,12 +36,14 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+# Claude Sonnet 4.5 (Sept 2025) - excellent balance of speed and capability
+# Alternative: claude-opus-4-1-20250805 (most capable but slower)
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
 OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-large")
 
-# Initialize clients
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if (OPENAI_AVAILABLE and OPENAI_API_KEY) else None
-anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY) if (ANTHROPIC_AVAILABLE and ANTHROPIC_API_KEY) else None
+# Initialize clients with timeout configuration
+openai_client = OpenAI(api_key=OPENAI_API_KEY, timeout=30.0) if (OPENAI_AVAILABLE and OPENAI_API_KEY) else None
+anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=60.0) if (ANTHROPIC_AVAILABLE and ANTHROPIC_API_KEY) else None
 
 
 # Schemas
@@ -276,7 +278,10 @@ async def generate_with_claude(
     try:
         variants = []
         
-        # Claude doesn't support n parameter, so we make multiple calls
+        # Claude doesn't support n parameter, so we make multiple sequential calls
+        # Note: This can be slow for large n values (3-10 seconds per call)
+        logger.info("claude_generate_start", count=n, model=ANTHROPIC_MODEL)
+        
         for i in range(n):
             if structured:
                 # For structured prompts
@@ -482,9 +487,12 @@ async def sharpen_prompt(request: SharpenRequest):
     
     if request.model in ("gpt", "both"):
         try:
+            # When using both models, request full count from each to ensure we get enough after deduplication
+            # For single model, request exactly what's asked
+            gpt_count = request.variants if request.model == "gpt" else request.variants
             gpt_variants = await generate_with_openai(
                 request.original,
-                request.variants if request.model == "gpt" else max(1, request.variants // 2),
+                gpt_count,
                 request.temperature,
                 request.max_tokens,
                 structured=request.structured,
@@ -498,9 +506,18 @@ async def sharpen_prompt(request: SharpenRequest):
     
     if request.model in ("claude", "both"):
         try:
+            # Claude makes sequential calls, so limit count to avoid timeouts
+            # When using both models, cap at 3 variants from Claude
+            # For single model, request exactly what's asked
+            if request.model == "claude":
+                claude_count = request.variants
+            else:
+                # Using "both" - limit Claude to 3 to avoid timeout (GPT provides the rest)
+                claude_count = min(3, request.variants)
+            
             claude_variants = await generate_with_claude(
                 request.original,
-                request.variants if request.model == "claude" else max(1, request.variants // 2),
+                claude_count,
                 request.temperature,
                 request.max_tokens,
                 structured=request.structured,

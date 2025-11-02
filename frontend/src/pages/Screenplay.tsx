@@ -24,9 +24,12 @@ export default function Screenplay() {
   const [startCenterWidth, setStartCenterWidth] = useState(0);
   
   const navigate = useNavigate();
-  const { data: screenplayList, isLoading } = useScreenplays();
+  const { data: screenplayList, isLoading, error } = useScreenplays();
   const { data: selectedScreenplay } = useScreenplay(selectedScreenplayId || undefined);
   const deleteScreenplayMutation = useDeleteScreenplay();
+  
+  // Debug logging
+  console.log('Screenplay page state:', { isLoading, hasData: !!screenplayList, error });
 
   const handleUploadSuccess = (screenplayId: string) => {
     setShowUpload(false);
@@ -143,7 +146,11 @@ export default function Screenplay() {
           
           <div className="p-2">
             <h2 className="text-lg font-medium text-gray-900 px-2 mb-3">Screenplays</h2>
-            {isLoading ? (
+            {error ? (
+              <div className="p-4 text-center text-red-600">
+                Error loading screenplays: {error instanceof Error ? error.message : 'Unknown error'}
+              </div>
+            ) : isLoading ? (
               <div className="p-4 text-center">Loading...</div>
             ) : screenplayList && screenplayList.screenplays.length > 0 ? (
               <ul className="space-y-1">

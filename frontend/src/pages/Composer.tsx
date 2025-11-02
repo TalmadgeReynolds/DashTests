@@ -10,7 +10,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPromptJob, createAudioJob, getPresignedUrl, uploadToPresignedUrl } from '@/lib/job-api';
 import { generatePortrait } from '@/lib/imagen-api';
 import { voiceApi } from '@/lib/voice-api';
-import type { CreatePromptJobRequest, CreateAudioJobRequest, PromptVariant } from '@/types/job';
+import type { CreatePromptJobRequest, CreateAudioJobRequest } from '@/types/job';
 import { SparklesIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { AvatarSelector } from '@/components/AvatarSelector';
 import PromptSharpenerModal from '@/components/PromptSharpenerModal';

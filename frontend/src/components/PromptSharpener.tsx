@@ -33,9 +33,10 @@ export default function PromptSharpener({
   const [sharpenedPrompts, setSharpenedPrompts] = useState<PromptSharpenResponse | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<PromptVariant | null>(null);
   
-  const [structuredMode, setStructuredMode] = useState(false);
+  const [structuredMode, setStructuredMode] = useState(true); // Default to structured mode for color-coded elements
+  const [selectedModel, setSelectedModel] = useState<'gpt' | 'claude' | 'both'>('gpt'); // Default to GPT (faster)
   const [selectedEmphasis, setSelectedEmphasis] = useState<EmphasisLayer[]>([]);
-  const [showElementsView, setShowElementsView] = useState(false);
+  const [showElementsView, setShowElementsView] = useState(true); // Auto-show elements when available
   const [variantCount, setVariantCount] = useState<number>(3);
   const [showComparison, setShowComparison] = useState<boolean>(false);
   const [showInfoBox, setShowInfoBox] = useState(true);
@@ -63,7 +64,7 @@ export default function PromptSharpener({
       
       const request: PromptSharpenRequest = {
         original: selectedPrompt,
-        model: 'both',
+        model: selectedModel,
         variants: variantCount,
         temperature: 0.3,
         max_tokens: structuredMode ? 500 : 300,
@@ -125,7 +126,7 @@ export default function PromptSharpener({
     } finally {
       setIsSharpening(false);
     }
-  }, [selectedPrompt, structuredMode, selectedEmphasis, variantCount, onVariantSelect]);
+  }, [selectedPrompt, structuredMode, selectedModel, selectedEmphasis, variantCount, onVariantSelect]);
   
   const handleSelectVariant = useCallback((variant: PromptVariant) => {
     setSelectedVariant(variant);
@@ -196,7 +197,7 @@ export default function PromptSharpener({
                   <strong>Simple Mode:</strong> Quick enhancement with cinematic details
                 </div>
                 <div>
-                  <strong>Structured Mode:</strong> Extracts character, action, camera, location, etc.
+                  <strong>Structured Mode:</strong> 🎨 Color-coded breakdown (Character, Action, Camera, Location, etc.)
                 </div>
               </div>
               <div className="mt-2 pt-2 border-t border-blue-200 text-xs text-blue-600">
@@ -262,6 +263,53 @@ export default function PromptSharpener({
             <span className="text-xs text-gray-500">
               {structuredMode ? 'Extract narrative elements' : 'Simple text enhancement'}
             </span>
+          </div>
+
+          {/* Model Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+              AI Model
+              <div className="relative group">
+                <InformationCircleIcon className="w-4 h-4 text-gray-400 cursor-help" />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                  <strong>GPT-4o</strong>: ⚡ Fast, structured, detailed.<br/>
+                  <strong>Claude 4.5</strong>: 🎨 Creative, natural (slower).<br/>
+                  <strong>Both</strong>: Mix of both (takes longer).
+                </div>
+              </div>
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedModel('gpt')}
+                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedModel === 'gpt'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                🤖 GPT-4o
+              </button>
+              <button
+                onClick={() => setSelectedModel('claude')}
+                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedModel === 'claude'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                🧠 Claude
+              </button>
+              <button
+                onClick={() => setSelectedModel('both')}
+                className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedModel === 'both'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                ✨ Both
+              </button>
+            </div>
           </div>
           
           {/* Variant Count Selector */}
@@ -478,6 +526,11 @@ export default function PromptSharpener({
           ) : (
             // Single Variant View with Details
             <div className="space-y-3">
+              {/* Score Explanation */}
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-800">
+                <strong>Quality Score:</strong> Based on semantic similarity to your original + visual detail richness. Higher = better quality enhancement.
+              </div>
+              
               {/* Variant Selector Tabs */}
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {sharpenedPrompts.variants.map((variant, idx) => (
