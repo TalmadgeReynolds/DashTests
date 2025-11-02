@@ -32,8 +32,6 @@ export default function ScreenplayViewer({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null); // Start with null instead of the raw S3 URL
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
-  
   const processTextMutation = useProcessTextSelection();
 
   // Get presigned URL for PDF when component mounts
@@ -65,28 +63,38 @@ export default function ScreenplayViewer({
     setNumPages(numPages);
   };
 
-  const handleMouseDown = useCallback(() => {
-    setIsSelecting(true);
-  }, []);
-
-  const handleMouseMove = useCallback(() => {
-    if (isSelecting) {
-      const selection = window.getSelection();
-      const text = selection?.toString().trim();
-      
-      if (text && text.length > 0) {
-        setSelectedText(text);
-      }
-    }
-  }, [isSelecting]);
-  
-  const handleMouseUp = useCallback(() => {
-    setIsSelecting(false);
+  /**
+   * Handle text selection changes
+   * Only captures selection on mouseup to avoid performance issues
+   * and ensure accurate text capture
+   */
+  const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
-    const text = selection?.toString().trim();
     
+    // Validate selection exists and has content
+    if (!selection || selection.rangeCount === 0) {
+      return;
+    }
+    
+    const text = selection.toString().trim();
+    
+    // Only update if we have actual text content
     if (text && text.length > 0) {
-      setSelectedText(text);
+      // Verify the selection is within the PDF viewer
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      const pdfTextLayer = (container.nodeType === Node.TEXT_NODE 
+        ? container.parentElement 
+        : container as Element)?.closest('.react-pdf__Page__textContent');
+      
+      if (pdfTextLayer) {
+        setSelectedText(text);
+      } else {
+        // Selection is outside PDF, clear it
+        setSelectedText('');
+      }
+    } else {
+      setSelectedText('');
     }
   }, []);
 
@@ -105,13 +113,20 @@ export default function ScreenplayViewer({
       onTextSelected?.(result.selected_text, result.processed_prompt);
       
       // Clear selection
-      window.getSelection()?.removeAllRanges();
-      setSelectedText('');
+      clearSelection();
     } catch (error) {
       console.error('Failed to process text selection:', error);
       alert('Failed to process selected text. Please try again.');
     }
   };
+
+  /**
+   * Clear the current text selection both visually and in state
+   */
+  const clearSelection = useCallback(() => {
+    window.getSelection()?.removeAllRanges();
+    setSelectedText('');
+  }, []);
 
   const goToPrevPage = () => {
     setPageNumber((prev) => Math.max(prev - 1, 1));
@@ -169,9 +184,7 @@ export default function ScreenplayViewer({
       {/* PDF Viewer */}
       <div
         className="flex-1 overflow-auto p-4"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onMouseUp={handleTextSelection}
       >
         <div className="flex justify-center">
           {loading && (
@@ -227,12 +240,15 @@ export default function ScreenplayViewer({
           <div className="flex flex-col space-y-3">
             {/* Text Selection Actions */}
             <div className="flex items-center gap-3">
-              {selectedText && (
+              {selectedText ? (
                 <>
                   <button
-                    onClick={() => onTextSelected?.(selectedText, selectedText)}
+                    onClick={() => {
+                      onTextSelected?.(selectedText, selectedText);
+                      clearSelection();
+                    }}
                     disabled={!selectedText}
-                    className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+                    className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                   >
                     Send to Prompt
                   </button>
@@ -240,15 +256,27 @@ export default function ScreenplayViewer({
                   <button
                     onClick={handleUseSelection}
                     disabled={!selectedText || processTextMutation.isPending}
-                    className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                   >
                     {processTextMutation.isPending ? 'Processing...' : 'Generate Talking Head'}
                   </button>
                   
-                  <span className="text-xs text-gray-600">
-                    {selectedText.length} characters selected
+                  <button
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm font-medium transition-colors"
+                    title="Clear selection"
+                  >
+                    Clear
+                  </button>
+                  
+                  <span className="text-sm text-gray-600 font-medium">
+                    {selectedText.length} character{selectedText.length !== 1 ? 's' : ''} selected
                   </span>
                 </>
+              ) : (
+                <span className="text-sm text-gray-500 italic">
+                  Select text from the screenplay to begin
+                </span>
               )}
             </div>
             

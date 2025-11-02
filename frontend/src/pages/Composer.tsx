@@ -10,9 +10,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { createPromptJob, createAudioJob, getPresignedUrl, uploadToPresignedUrl } from '@/lib/job-api';
 import { generatePortrait } from '@/lib/imagen-api';
 import { voiceApi } from '@/lib/voice-api';
-import type { CreatePromptJobRequest, CreateAudioJobRequest } from '@/types/job';
+import type { CreatePromptJobRequest, CreateAudioJobRequest, PromptVariant } from '@/types/job';
 import { SparklesIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { AvatarSelector } from '@/components/AvatarSelector';
+import PromptSharpenerModal from '@/components/PromptSharpenerModal';
 
 type WorkflowOption = 'prompt' | 'audio';
 
@@ -70,6 +71,7 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
   const [referenceImageUrl, setReferenceImageUrl] = useState('');
   const [portraitPrompt, setPortraitPrompt] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [showSharpenerModal, setShowSharpenerModal] = useState(false);
   
   // Multiple reference images (up to 3)
   const [referenceImages, setReferenceImages] = useState<Array<{
@@ -188,10 +190,19 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Script Input */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Script <span className="text-red-500">*</span>
-          <span className="text-xs text-gray-500 ml-2">({script.length}/500 characters)</span>
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Script <span className="text-red-500">*</span>
+            <span className="text-xs text-gray-500 ml-2">({script.length}/500 characters)</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowSharpenerModal(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 transition-colors"
+          >
+            ✨ Sharpen Prompt
+          </button>
+        </div>
         <textarea
           value={script}
           onChange={(e) => setScript(e.target.value)}
@@ -202,9 +213,21 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
           maxLength={500}
         />
         <p className="text-xs text-gray-500 mt-1">
-          The AI will generate a video with a speaking character based on this script
+          The AI will generate a video with a speaking character based on this script. 
+          Use the <strong>✨ Sharpen Prompt</strong> button to enhance it with AI.
         </p>
       </div>
+      
+      {/* Prompt Sharpener Modal */}
+      <PromptSharpenerModal
+        isOpen={showSharpenerModal}
+        onClose={() => setShowSharpenerModal(false)}
+        initialPrompt={script}
+        onApplyVariant={(text) => {
+          setScript(text);
+          setShowSharpenerModal(false);
+        }}
+      />
 
       {/* Reference Image - Upload or Generate */}
       <div className="space-y-4">

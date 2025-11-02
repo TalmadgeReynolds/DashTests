@@ -124,6 +124,55 @@ echo_success "Environment loaded"
 }
 
 ###############################################################################
+# Security Group Auto-Update
+###############################################################################
+
+function update_security_group() {
+    echo_info "Attempting to update AWS security group with current IP..."
+    
+    # Get security group ID from environment
+    if [ -z "$RDS_SECURITY_GROUP_ID" ]; then
+        echo_error "RDS_SECURITY_GROUP_ID not found in .env file"
+        return 1
+    fi
+    
+    # Get current public IP
+    CURRENT_IP=$(curl -s http://checkip.amazonaws.com)
+    if [ -z "$CURRENT_IP" ]; then
+        echo_error "Could not determine your public IP address"
+        return 1
+    fi
+    
+    echo_info "Your current IP: $CURRENT_IP"
+    echo_info "Security Group: $RDS_SECURITY_GROUP_ID"
+    
+    # Use us-east-1 region (where RDS is located)
+    AWS_REGION_SG="us-east-1"
+    
+    # Add rule for PostgreSQL access from current IP
+    if aws ec2 authorize-security-group-ingress \
+        --group-id "$RDS_SECURITY_GROUP_ID" \
+        --protocol tcp \
+        --port 5432 \
+        --cidr "$CURRENT_IP/32" \
+        --region "$AWS_REGION_SG" 2>/dev/null; then
+        echo_success "Successfully added your IP ($CURRENT_IP) to security group"
+        return 0
+    else
+        # Check if rule already exists (this is actually a success case)
+        if aws ec2 describe-security-groups \
+            --group-ids "$RDS_SECURITY_GROUP_ID" \
+            --region "$AWS_REGION_SG" 2>/dev/null | grep -q "$CURRENT_IP/32"; then
+            echo_success "Your IP ($CURRENT_IP) is already authorized in security group"
+            return 0
+        else
+            echo_error "Failed to update security group"
+            return 1
+        fi
+    fi
+}
+
+###############################################################################
 # Database setup
 ###############################################################################
 
@@ -136,15 +185,50 @@ function setup_database() {
     if [[ "$DATABASE_URL" =~ .*\.rds\. ]] || [[ "$DATABASE_URL" =~ .*\.amazonaws\.com ]] || [[ "$POSTGRES_HOST" =~ .*\.rds\. ]] || [[ "$POSTGRES_HOST" =~ .*\.amazonaws\.com ]]; then
         echo_info "AWS RDS database detected"
         
-        # Try connecting to the RDS database
+        # Try connecting to the RDS database with retry logic and auto-update security group
         if command -v pg_isready > /dev/null; then
-            if pg_isready -h ${POSTGRES_HOST:-localhost} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-postgres} > /dev/null 2>&1; then
-                echo_success "Connected to AWS RDS database successfully"
-                DB_AVAILABLE=true
-                return 0
-            else
-                echo_warning "Could not connect to AWS RDS database. Check your credentials and security group settings."
-            fi
+            MAX_RETRIES=3
+            RETRY_COUNT=0
+            SG_UPDATED=false
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if pg_isready -h ${POSTGRES_HOST:-localhost} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-postgres} > /dev/null 2>&1; then
+                    echo_success "Connected to AWS RDS database successfully"
+                    DB_AVAILABLE=true
+                    return 0
+                else
+                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                    echo_warning "Connection attempt $RETRY_COUNT of $MAX_RETRIES failed"
+                    
+                    # On first failure, try updating security group
+                    if [ $RETRY_COUNT -eq 1 ] && [ "$SG_UPDATED" = false ]; then
+                        echo_info "Attempting to update security group automatically..."
+                        if update_security_group; then
+                            SG_UPDATED=true
+                            echo_info "Waiting 5 seconds for security group rules to propagate..."
+                            sleep 5
+                        else
+                            echo_error "Failed to update security group. Cannot connect to RDS."
+                            echo_error "Please check:"
+                            echo_error "  1. AWS CLI is configured with valid credentials"
+                            echo_error "  2. Your IAM user has ec2:AuthorizeSecurityGroupIngress permission"
+                            echo_error "  3. RDS_SECURITY_GROUP_ID in .env is correct: $RDS_SECURITY_GROUP_ID"
+                            exit 1
+                        fi
+                    elif [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                        echo_info "Waiting 3 seconds before retry..."
+                        sleep 3
+                    fi
+                fi
+            done
+            
+            # If we get here, all retries failed
+            echo_error "Failed to connect to AWS RDS database after $MAX_RETRIES attempts"
+            echo_error "Security group was updated but connection still failed. Please check:"
+            echo_error "  1. Database credentials in .env are correct"
+            echo_error "  2. RDS instance is running and accessible"
+            echo_error "  3. Network connectivity to AWS"
+            exit 1
         fi
     fi
     
