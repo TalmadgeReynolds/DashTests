@@ -15,20 +15,26 @@ logger = get_logger("veo_adapter")
 
 
 class VeoAdapter:
-    """Adapter for Veo 3 video generation API with full feature support"""
+    """Adapter for Veo 3/3.1 video generation API with full feature support"""
     
     def __init__(self, api_key: Optional[str] = None, project_id: Optional[str] = None, location: Optional[str] = None, mock_mode: bool = None):
         self.api_key = api_key or settings.VEO3_API_KEY
-        self.project_id = project_id or settings.get("VERTEX_PROJECT_ID", "")
-        self.location = location or settings.get("VERTEX_LOCATION", "us-central1")
+        self.project_id = project_id or getattr(settings, "VERTEX_PROJECT_ID", "")
+        self.location = location or getattr(settings, "VERTEX_LOCATION", "us-central1")
         # Check both specific setting and global MOCK_PROVIDERS flag
         self.mock_mode = mock_mode if mock_mode is not None else (settings.VEO3_MOCK_MODE or settings.MOCK_PROVIDERS)
         
-        # Use Vertex AI Veo endpoint
-        self.base_url = f"https://{self.location}-aiplatform.googleapis.com/v1/projects/{self.project_id}/locations/{self.location}/publishers/google/models"
+        # Vertex AI endpoint for Veo 3.0
+        self.vertex_base_url = f"https://{self.location}-aiplatform.googleapis.com/v1/projects/{self.project_id}/locations/{self.location}/publishers/google/models"
+        # Gemini API endpoint for Veo 3.1
+        self.gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         
         if not self.api_key and not self.mock_mode:
             logger.warning("veo_no_api_key", message="No Veo API key provided and mock mode is disabled")
+    
+    def _is_veo_31_model(self, model_id: str) -> bool:
+        """Check if the model is a Veo 3.1 model (uses Gemini API)"""
+        return "3.1" in model_id or "3-1" in model_id
     
     @backoff.on_exception(
         backoff.expo,
@@ -41,7 +47,7 @@ class VeoAdapter:
     def generate_video(
         self,
         prompt: str,
-        model_id: str = "veo-3.0-generate-001",
+        model_id: str = "veo-3.1-generate-preview",
         # Video generation modes
         input_image: Optional[Union[str, bytes]] = None,  # For image-to-video
         input_video: Optional[Union[str, bytes]] = None,  # For video extension
@@ -145,22 +151,39 @@ class VeoAdapter:
         if storage_uri:
             parameters["storageUri"] = storage_uri
         
-        payload = {
-            "instances": instances,
-            "parameters": parameters
-        }
+        # Determine which API to use based on model version
+        is_veo_31 = self._is_veo_31_model(model_id)
         
         try:
             with httpx.Client(timeout=60.0) as client:
-                url = f"{self.base_url}/{model_id}:predictLongRunning"
-                response = client.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json=payload
-                )
+                if is_veo_31:
+                    # Use Gemini API for Veo 3.1
+                    url = f"{self.gemini_base_url}/{model_id}:generateVideos"
+                    # Gemini API uses different request format
+                    gemini_payload = self._convert_to_gemini_format(instances, parameters, prompt)
+                    response = client.post(
+                        url,
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": self.api_key
+                        },
+                        json=gemini_payload
+                    )
+                else:
+                    # Use Vertex AI for Veo 3.0
+                    payload = {
+                        "instances": instances,
+                        "parameters": parameters
+                    }
+                    url = f"{self.vertex_base_url}/{model_id}:predictLongRunning"
+                    response = client.post(
+                        url,
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json=payload
+                    )
                 
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
@@ -211,6 +234,46 @@ class VeoAdapter:
                 "mimeType": mime_type
             }
     
+    def _convert_to_gemini_format(self, instances: List[Dict], parameters: Dict, prompt: str) -> Dict:
+        """Convert Vertex AI format to Gemini API format for Veo 3.1"""
+        config = {}
+        
+        # Map parameters to Gemini config format
+        if "aspectRatio" in parameters:
+            config["aspectRatio"] = parameters["aspectRatio"]
+        if "durationSeconds" in parameters:
+            config["durationSeconds"] = parameters["durationSeconds"]
+        if "resolution" in parameters:
+            config["resolution"] = parameters["resolution"]
+        if "negativePrompt" in parameters:
+            config["negativePrompt"] = parameters["negativePrompt"]
+        if "personGeneration" in parameters:
+            config["personGeneration"] = parameters["personGeneration"]
+        if "seed" in parameters:
+            config["seed"] = parameters["seed"]
+        
+        # Build Gemini API payload
+        gemini_payload = {
+            "prompt": prompt
+        }
+        
+        # Add optional fields from instances
+        if instances and len(instances) > 0:
+            instance = instances[0]
+            if "image" in instance:
+                gemini_payload["image"] = instance["image"]
+            if "video" in instance:
+                gemini_payload["video"] = instance["video"]
+            if "lastFrame" in instance:
+                config["lastFrame"] = instance["lastFrame"]
+            if "referenceImages" in instance:
+                config["referenceImages"] = instance["referenceImages"]
+        
+        if config:
+            gemini_payload["config"] = config
+        
+        return gemini_payload
+    
     @backoff.on_exception(
         backoff.expo,
         (httpx.RequestError, ProviderTimeoutError, ProviderRateLimitError),
@@ -243,7 +306,7 @@ class VeoAdapter:
         factor=2,
         jitter=backoff.full_jitter
     )
-    def poll_operation(self, operation_name: str, model_id: str = "veo-3.0-generate-001") -> Dict:
+    def poll_operation(self, operation_name: str, model_id: str = "veo-3.1-generate-preview") -> Dict:
         """
         Poll the status of a long-running video generation operation
         
@@ -294,17 +357,30 @@ class VeoAdapter:
                 }
         
         start_time = time.time()
+        is_veo_31 = self._is_veo_31_model(model_id)
+        
         try:
             with httpx.Client(timeout=10.0) as client:
-                url = f"{self.base_url}/{model_id}:fetchPredictOperation"
-                response = client.post(
-                    url,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={"operationName": operation_name}
-                )
+                if is_veo_31:
+                    # Use Gemini API for Veo 3.1
+                    url = f"https://generativelanguage.googleapis.com/v1beta/{operation_name}"
+                    response = client.get(
+                        url,
+                        headers={
+                            "x-goog-api-key": self.api_key
+                        }
+                    )
+                else:
+                    # Use Vertex AI for Veo 3.0
+                    url = f"{self.vertex_base_url}/{model_id}:fetchPredictOperation"
+                    response = client.post(
+                        url,
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={"operationName": operation_name}
+                    )
                 
                 elapsed_ms = (time.time() - start_time) * 1000
                 logger.info(
@@ -328,7 +404,19 @@ class VeoAdapter:
                 
                 if done and "response" in result:
                     response_data = result["response"]
-                    videos = response_data.get("videos", [])
+                    
+                    # Handle Gemini API format (generatedVideos) vs Vertex AI format (videos)
+                    if is_veo_31 and "generatedVideos" in response_data:
+                        # Gemini API format
+                        generated_videos = response_data.get("generatedVideos", [])
+                        # Convert Gemini format to unified format
+                        videos = []
+                        for gv in generated_videos:
+                            if "video" in gv:
+                                videos.append(gv["video"])
+                    else:
+                        # Vertex AI format
+                        videos = response_data.get("videos", [])
                     
                     return {
                         "done": True,

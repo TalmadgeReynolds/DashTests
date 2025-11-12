@@ -178,6 +178,7 @@ export default function PromptSharpener({
       {showInfoBox && !sharpenedPrompts && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 relative">
           <button
+            type="button"
             onClick={() => setShowInfoBox(false)}
             className="absolute top-2 right-2 text-blue-400 hover:text-blue-600"
           >
@@ -248,6 +249,7 @@ export default function PromptSharpener({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setStructuredMode(!structuredMode)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                   structuredMode ? 'bg-emerald-600' : 'bg-gray-200'
@@ -280,6 +282,7 @@ export default function PromptSharpener({
             </label>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setSelectedModel('gpt')}
                 className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
                   selectedModel === 'gpt'
@@ -290,6 +293,7 @@ export default function PromptSharpener({
                 🤖 GPT-4o
               </button>
               <button
+                type="button"
                 onClick={() => setSelectedModel('claude')}
                 className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
                   selectedModel === 'claude'
@@ -300,6 +304,7 @@ export default function PromptSharpener({
                 🧠 Claude
               </button>
               <button
+                type="button"
                 onClick={() => setSelectedModel('both')}
                 className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
                   selectedModel === 'both'
@@ -365,6 +370,7 @@ export default function PromptSharpener({
                   return (
                     <div key={layer} className="relative group">
                       <button
+                        type="button"
                         onClick={() => {
                           if (selectedEmphasis.includes(layer as EmphasisLayer)) {
                             setSelectedEmphasis(selectedEmphasis.filter(e => e !== layer as EmphasisLayer));
@@ -398,6 +404,7 @@ export default function PromptSharpener({
           {/* Sharpen Button */}
           <div className="flex justify-end pt-2">
             <button
+              type="button"
               onClick={handleSharpenPrompt}
               disabled={isSharpening || !selectedPrompt || selectedPrompt.length < 10}
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
@@ -430,6 +437,7 @@ export default function PromptSharpener({
             <div className="flex items-center gap-2">
               {structuredMode && (
                 <button
+                  type="button"
                   onClick={() => setShowElementsView(!showElementsView)}
                   className={`px-3 py-1.5 text-xs rounded-md border font-medium transition-colors ${
                     showElementsView 
@@ -441,6 +449,7 @@ export default function PromptSharpener({
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => setShowComparison(!showComparison)}
                 className={`px-3 py-1.5 text-xs rounded-md border font-medium transition-colors ${
                   showComparison 
@@ -451,6 +460,7 @@ export default function PromptSharpener({
                 {showComparison ? '📋 Single View' : '⚖️ Compare All'}
               </button>
               <button
+                type="button"
                 onClick={handleResetSharpening}
                 className="px-3 py-1.5 text-xs bg-white hover:bg-gray-50 text-gray-600 rounded-md border border-gray-300 font-medium transition-colors"
               >
@@ -467,6 +477,7 @@ export default function PromptSharpener({
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="font-medium text-gray-700">Original Prompt</h4>
                   <button 
+                    type="button"
                     onClick={() => navigator.clipboard.writeText(sharpenedPrompts.original)}
                     className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 transition-colors"
                   >
@@ -506,6 +517,7 @@ export default function PromptSharpener({
                         </span>
                       </div>
                       <button 
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigator.clipboard.writeText(variant.text);
@@ -535,6 +547,7 @@ export default function PromptSharpener({
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {sharpenedPrompts.variants.map((variant, idx) => (
                   <button
+                    type="button"
                     key={idx}
                     onClick={() => handleSelectVariant(variant)}
                     className={`flex-shrink-0 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -572,6 +585,7 @@ export default function PromptSharpener({
                       </span>
                     </div>
                     <button 
+                      type="button"
                       onClick={() => navigator.clipboard.writeText(selectedVariant.text)}
                       className="text-sm px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium transition-colors"
                     >
@@ -619,6 +633,7 @@ export default function PromptSharpener({
                               Model-Optimized Version
                             </p>
                             <button 
+                              type="button"
                               onClick={() => navigator.clipboard.writeText(selectedVariant.model_optimized || '')}
                               className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded border border-blue-300"
                             >

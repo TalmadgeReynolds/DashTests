@@ -28,6 +28,7 @@ export interface VideoOpts {
   // Video generation modes
   input_image_url?: string;
   input_video_url?: string;
+  first_frame_url?: string;  // VEO 3.1: First frame for interpolation
   last_frame_url?: string;
   mask_url?: string;
   mask_mode?: string;

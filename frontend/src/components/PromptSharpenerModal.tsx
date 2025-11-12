@@ -2,7 +2,7 @@
  * PromptSharpenerModal
  * Modal dialog wrapper for the PromptSharpener component
  */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import PromptSharpener from './PromptSharpener';
 import type { PromptVariant } from '@/types';
@@ -20,13 +20,27 @@ export default function PromptSharpenerModal({
   initialPrompt,
   onApplyVariant,
 }: PromptSharpenerModalProps) {
+  const [selectedVariant, setSelectedVariant] = useState<PromptVariant | null>(null);
   
   const handleVariantSelect = (variant: PromptVariant) => {
-    // Store the selected variant for the Apply button
-    // Using the variant text as the prompt
-    const textToUse = variant.model_optimized || variant.text;
-    onApplyVariant(textToUse, variant);
+    // Store the selected variant but don't close the modal yet
+    setSelectedVariant(variant);
   };
+  
+  const handleApply = () => {
+    if (selectedVariant) {
+      const textToUse = selectedVariant.model_optimized || selectedVariant.text;
+      onApplyVariant(textToUse, selectedVariant);
+      setSelectedVariant(null);
+    }
+  };
+  
+  // Reset selected variant when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedVariant(null);
+    }
+  }, [isOpen]);
 
   // Handle escape key and body scroll lock
   useEffect(() => {
@@ -90,7 +104,9 @@ export default function PromptSharpenerModal({
           {/* Footer */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
             <p className="text-sm text-gray-500">
-              💡 Select a variant above and it will automatically be applied to your script
+              {selectedVariant 
+                ? '✅ Variant selected! Click "Apply" to use it in your script.' 
+                : '💡 Click "Sharpen" to generate enhanced variants, then select one to preview.'}
             </p>
             <div className="flex gap-3">
               <button
@@ -98,7 +114,15 @@ export default function PromptSharpenerModal({
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                 onClick={onClose}
               >
-                Close
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!selectedVariant}
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                onClick={handleApply}
+              >
+                Apply to Script
               </button>
             </div>
           </div>

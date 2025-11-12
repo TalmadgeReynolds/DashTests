@@ -10,6 +10,7 @@ import redis
 import backoff
 from rq import Queue, Worker, Connection
 from rq.job import Job as RQJob
+from rq import Retry
 
 from .db import SessionLocal
 from .services.orchestrator import Orchestrator
@@ -20,12 +21,23 @@ from .exceptions import TransientProviderError, ProviderRateLimitError, Provider
 settings = get_settings()
 logger = get_logger("worker")
 
-# Configure Redis connection
-redis_conn = redis.Redis.from_url(settings.REDIS_URL)
+# Try to configure Redis connection, but make it optional
+redis_conn = None
+redis_available = False
+try:
+    redis_conn = redis.Redis.from_url(settings.REDIS_URL)
+    # Test the connection
+    redis_conn.ping()
+    redis_available = True
+    logger.info("redis_connected", message="Redis connection established")
+except (redis.ConnectionError, redis.TimeoutError) as e:
+    logger.warning("redis_unavailable", message=f"Redis not available: {e}. Jobs will be processed synchronously.")
+    redis_conn = None
+    redis_available = False
 
-# Create RQ queues
-option1_queue = Queue("option1", connection=redis_conn)
-option2_queue = Queue("option2", connection=redis_conn)
+# Create RQ queues only if Redis is available
+option1_queue = Queue("option1", connection=redis_conn) if redis_available else None
+option2_queue = Queue("option2", connection=redis_conn) if redis_available else None
 
 # Define queue priorities (for worker processing order)
 QUEUE_PRIORITY = {
@@ -34,8 +46,10 @@ QUEUE_PRIORITY = {
 }
 
 # Helper function to get a queue by name
-def get_queue(name: str) -> Queue:
-    """Get a queue by name"""
+def get_queue(name: str) -> Optional[Queue]:
+    """Get a queue by name (returns None if Redis is not available)"""
+    if not redis_available:
+        return None
     if name == "option1":
         return option1_queue
     elif name == "option2":
@@ -153,10 +167,10 @@ async def process_job(job_id: str) -> Dict[str, Any]:
         db.close()
 
 
-def enqueue_job(job_id: str, job_type: str = None, queue_name: str = "option1") -> RQJob:
+def enqueue_job(job_id: str, job_type: str = None, queue_name: str = "option1") -> Optional[RQJob]:
     """
-    Enqueue a job for processing
-    Returns the RQ job instance
+    Enqueue a job for processing or process it directly if Redis is not available
+    Returns the RQ job instance if using Redis, None if processing directly
     
     Args:
         job_id: The UUID of the job to process
@@ -177,19 +191,42 @@ def enqueue_job(job_id: str, job_type: str = None, queue_name: str = "option1") 
         "enqueueing_job",
         job_id=job_id,
         job_type=job_type,
-        queue=queue_name
+        queue=queue_name,
+        redis_available=redis_available
     )
     
-    return queue.enqueue(
-        func,
-        job_id,
-        job_id=f"process-{job_id}",
-        result_ttl=86400,  # 1 day
-        failure_ttl=86400,  # 1 day
-        timeout="30m",  # 30 minute timeout for job processing
-        retry=backoff.expo,  # Use exponential backoff for RQ job retries
-        max_retries=3  # Maximum number of RQ-level retries
-    )
+    if redis_available and queue:
+        # Use Redis queue for async processing
+        return queue.enqueue(
+            func,
+            job_id,
+            job_id=f"process-{job_id}",
+            result_ttl=86400,  # 1 day
+            failure_ttl=86400,  # 1 day
+            timeout="30m",  # 30 minute timeout for job processing
+            retry=Retry(max=3, interval=[10, 30, 60])  # Retry 3 times with increasing intervals
+        )
+    else:
+        # Redis not available - process job directly in background
+        logger.info("processing_job_directly", job_id=job_id, reason="redis_unavailable")
+        import threading
+        
+        def process_in_background():
+            try:
+                # Run the async function in a new event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(func(job_id))
+                loop.close()
+                logger.info("job_completed_directly", job_id=job_id, result=result)
+            except Exception as e:
+                logger.error("job_failed_directly", job_id=job_id, error=str(e), error_type=type(e).__name__)
+        
+        # Start background thread
+        thread = threading.Thread(target=process_in_background, daemon=True)
+        thread.start()
+        
+        return None
 
 
 @retry_on_transient_error(max_tries=5, max_time=600)

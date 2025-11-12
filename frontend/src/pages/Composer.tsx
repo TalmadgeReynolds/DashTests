@@ -65,6 +65,7 @@ export default function Composer() {
 
 // Option 1: Prompt → Lip-Sync (VEO 3)
 function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSuccess: (jobId: string) => void }) {
+  const navigate = useNavigate();
   const [script, setScript] = useState(initialPrompt);
   const [imageSource, setImageSource] = useState<'upload' | 'generate'>('upload');
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
@@ -83,9 +84,14 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
   const [aspect, setAspect] = useState<'16:9' | '9:16'>('16:9');
   const [priority, setPriority] = useState<'high' | 'low'>('low');
   
+  // UI collapsible sections
+  const [showReferenceImage, setShowReferenceImage] = useState(false);
+  const [showMultipleReferences, setShowMultipleReferences] = useState(false);
+  
   // New Veo 3 settings
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [modelId, setModelId] = useState('veo-3.0-generate-001');
+  const [modelId, setModelId] = useState('veo-3.1-generate-preview');
+  const [provider, setProvider] = useState<'veo' | 'minimax'>('veo');
   const [durationSeconds, setDurationSeconds] = useState<4 | 6 | 8>(8);
   const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
   const [generateAudio, setGenerateAudio] = useState(false);
@@ -100,6 +106,7 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
   // Advanced video modes
   const [videoMode, setVideoMode] = useState<'text-to-video' | 'image-to-video' | 'video-extension' | 'frame-interpolation' | 'video-editing'>('text-to-video');
   const [inputVideoUrl, setInputVideoUrl] = useState('');
+  const [firstFrameUrl, setFirstFrameUrl] = useState('');
   const [lastFrameUrl, setLastFrameUrl] = useState('');
   const [maskUrl, setMaskUrl] = useState('');
   const [maskMode, setMaskMode] = useState('MASK_MODE_USER_PROVIDED');
@@ -135,6 +142,12 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // If MiniMax is selected, redirect to MiniMax page
+    if (provider === 'minimax') {
+      navigate('/minimax', { state: { prompt: script } });
+      return;
+    }
+    
     if (script.length < 8 || script.length > 500) {
       alert('Script must be between 8 and 500 characters');
       return;
@@ -169,6 +182,7 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
         sample_count: sampleCount,
         // Advanced video modes
         input_video_url: inputVideoUrl || undefined,
+        first_frame_url: firstFrameUrl || undefined,
         last_frame_url: lastFrameUrl || undefined,
         mask_url: maskUrl || undefined,
         mask_mode: videoMode === 'video-editing' ? maskMode : undefined,
@@ -229,38 +243,333 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
         }}
       />
 
-      {/* Reference Image - Upload or Generate */}
-      <div className="space-y-4">
-        <label className="block text-sm font-medium text-gray-700">
-          Reference Image (Optional)
+      {/* Video Generation Mode - Moved up for better UX */}
+      <div className="space-y-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+        <label className="block text-sm font-medium text-gray-900">
+          🎬 Video Generation Mode
         </label>
+        <select
+          value={videoMode}
+          onChange={(e) => {
+            setVideoMode(e.target.value as 'text-to-video' | 'image-to-video' | 'video-extension' | 'frame-interpolation' | 'video-editing');
+            // Auto-show reference image section for image-to-video
+            if (e.target.value === 'image-to-video') {
+              setShowReferenceImage(true);
+            }
+          }}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium"
+        >
+          <option value="text-to-video">💬 Text to Video (Default)</option>
+          <option value="image-to-video">🖼️ Image to Video</option>
+          <option value="video-extension">➡️ Video Extension (VEO 3.1)</option>
+          <option value="frame-interpolation">🎞️ Frame Interpolation (VEO 3.1)</option>
+          <option value="video-editing">✂️ Video Editing with Masks</option>
+        </select>
+        <p className="text-xs text-gray-600">
+          {videoMode === 'text-to-video' && 'Generate video from text prompt only'}
+          {videoMode === 'image-to-video' && 'Animate a starting image with your prompt'}
+          {videoMode === 'video-extension' && 'Extend an existing Veo-generated video by 7 seconds'}
+          {videoMode === 'frame-interpolation' && 'Create smooth video between two frames'}
+          {videoMode === 'video-editing' && 'Edit video using masks to add/remove objects'}
+        </p>
+      </div>
+
+      {/* Core Video Settings - Always Visible */}
+      <div className="space-y-4 p-4 bg-white border border-gray-200 rounded-lg">
+        <h3 className="text-sm font-semibold text-gray-900">⚙️ Video Settings</h3>
         
-        {/* Image Source Toggle */}
-        <div className="flex gap-4 mb-4">
+        {/* Model Selection - Critical Setting */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Model Selection <span className="text-xs text-gray-500">(Choose provider & quality)</span>
+          </label>
+          <select
+            value={`${provider}:${modelId}`}
+            onChange={(e) => {
+              const [newProvider, newModel] = e.target.value.split(':');
+              setProvider(newProvider as 'veo' | 'minimax');
+              setModelId(newModel);
+            }}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <optgroup label="🎬 Google Veo">
+              <option value="veo:veo-3.1-generate-preview">⭐ Veo 3.1 (Preview - Best Quality)</option>
+              <option value="veo:veo-3.1-fast-generate-preview">⚡ Veo 3.1 Fast (Preview - Faster)</option>
+              <option value="veo:veo-3.0-generate-001">Veo 3.0 (Standard)</option>
+              <option value="veo:veo-3.0-fast-generate-001">Veo 3.0 Fast</option>
+              <option value="veo:veo-2.0-generate-001">Veo 2.0 (Legacy)</option>
+            </optgroup>
+            <optgroup label="🎥 MiniMax Hailuo">
+              <option value="minimax:MiniMax-Hailuo-2.3">🌟 Hailuo 2.3 (Premium Quality)</option>
+              <option value="minimax:MiniMax-Hailuo-2.3-Fast">⚡ Hailuo 2.3 Fast (Faster)</option>
+              <option value="minimax:MiniMax-Hailuo-02">📹 Hailuo 02 (1080P + 10s)</option>
+            </optgroup>
+          </select>
+          
+          {/* MiniMax info message */}
+          {provider === 'minimax' && (
+            <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-1">
+                    MiniMax Hailuo Selected
+                  </h4>
+                  <p className="text-sm text-blue-800 mb-2">
+                    MiniMax offers advanced video generation with support for text-to-video, image-to-video, frame interpolation, and subject reference modes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/minimax', { state: { prompt: script } })}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <span>Open MiniMax Generator</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {provider === 'veo' && (
+        <>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Duration */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
+            <select
+              value={durationSeconds}
+              onChange={(e) => setDurationSeconds(parseInt(e.target.value) as 4 | 6 | 8)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={4}>4 seconds</option>
+              <option value={6}>6 seconds</option>
+              <option value={8}>8 seconds</option>
+            </select>
+          </div>
+
+          {/* Resolution */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Resolution</label>
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value as '720p' | '1080p')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="720p">720p (Faster)</option>
+              <option value="1080p">1080p (Higher Quality)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Aspect Ratio */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Aspect Ratio</label>
+            <select
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value as '16:9' | '9:16')}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="16:9">16:9 (Landscape)</option>
+              <option value="9:16">9:16 (Portrait)</option>
+            </select>
+          </div>
+
+          {/* Sample Count */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Videos to Generate</label>
+            <select
+              value={sampleCount}
+              onChange={(e) => setSampleCount(parseInt(e.target.value))}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={1}>1 video</option>
+              <option value={2}>2 videos</option>
+              <option value={3}>3 videos</option>
+              <option value={4}>4 videos</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Audio Generation */}
+        <div className="flex items-start gap-2 bg-blue-50 p-3 rounded-lg border border-blue-200">
+          <input
+            type="checkbox"
+            id="generateAudio"
+            checked={generateAudio}
+            onChange={(e) => setGenerateAudio(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+          />
+          <div className="flex-1">
+            <label htmlFor="generateAudio" className="text-sm font-medium text-gray-900">
+              🔊 Generate Audio <span className="text-xs text-blue-600">(VEO 3)</span>
+            </label>
+            <p className="text-xs text-gray-600 mt-0.5">Add AI-generated audio synchronized with video</p>
+          </div>
+        </div>
+
+        {/* Advanced Control Options - Collapsible */}
+        <div className="pt-2 border-t border-gray-200">
           <button
             type="button"
-            onClick={() => setImageSource('upload')}
-            className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
-              imageSource === 'upload'
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-gray-300 text-gray-700 hover:border-gray-400'
-            }`}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="w-full flex items-center justify-between text-sm text-gray-700 hover:text-gray-900"
           >
-            Upload Image
-          </button>
-          <button
-            type="button"
-            onClick={() => setImageSource('generate')}
-            className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
-              imageSource === 'generate'
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-gray-300 text-gray-700 hover:border-gray-400'
-            }`}
-          >
-            <SparklesIcon className="w-5 h-5" />
-            Generate with AI
+            <span className="font-medium">⚡ Advanced Controls</span>
+            <ChevronDownIcon className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
           </button>
         </div>
+
+        {/* Advanced Settings Content */}
+        {showAdvanced && (
+          <div className="space-y-4 pt-3">
+            {/* Negative Prompt */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Negative Prompt</label>
+              <input
+                type="text"
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+                placeholder="What to avoid (e.g., blurry, distorted, low quality)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Describe what you don't want in the video</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Prompt Enhancement */}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="enhancePrompt"
+                  checked={enhancePrompt}
+                  onChange={(e) => setEnhancePrompt(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+                />
+                <div className="flex-1">
+                  <label htmlFor="enhancePrompt" className="text-sm font-medium text-gray-900">
+                    ✨ Enhance Prompt
+                  </label>
+                  <p className="text-xs text-gray-500 mt-0.5">Use Gemini to improve prompt</p>
+                </div>
+              </div>
+
+              {/* Seed */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Seed (Optional)</label>
+                <input
+                  type="number"
+                  value={seed || ''}
+                  onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : undefined)}
+                  placeholder="Random"
+                  min={0}
+                  max={4294967295}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Person Generation */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Person Generation</label>
+                <select
+                  value={personGeneration}
+                  onChange={(e) => setPersonGeneration(e.target.value as 'allow_adult' | 'allow_all' | 'dont_allow')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="allow_adult">Adults Only</option>
+                  <option value="allow_all">All Ages</option>
+                  <option value="dont_allow">No People</option>
+                </select>
+              </div>
+
+              {/* Compression Quality */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Compression</label>
+                <select
+                  value={compressionQuality}
+                  onChange={(e) => setCompressionQuality(e.target.value as 'optimized' | 'lossless')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="optimized">Optimized (Smaller)</option>
+                  <option value="lossless">Lossless (Best)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Resize Mode - Only for Image-to-Video */}
+            {(videoMode === 'image-to-video' || referenceImageUrl) && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Image Resize Mode</label>
+                <select
+                  value={resizeMode}
+                  onChange={(e) => setResizeMode(e.target.value as 'pad' | 'crop')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="pad">Pad (Keep entire image)</option>
+                  <option value="crop">Crop (Fill frame)</option>
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+        </>
+      )}
+      </div>
+
+      {/* Reference Image - Collapsible and Optional */}
+      {(videoMode === 'image-to-video' || showReferenceImage) && (
+        <div className="space-y-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700">
+              🖼️ Reference Image {videoMode === 'image-to-video' && <span className="text-red-500">*</span>}
+            </label>
+            {videoMode === 'text-to-video' && (
+              <button
+                type="button"
+                onClick={() => setShowReferenceImage(false)}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Hide
+              </button>
+            )}
+          </div>
+          
+          {/* Image Source Toggle */}
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setImageSource('upload')}
+              className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors ${
+                imageSource === 'upload'
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-gray-300 text-gray-700 hover:border-gray-400'
+              }`}
+            >
+              Upload Image
+            </button>
+            <button
+              type="button"
+              onClick={() => setImageSource('generate')}
+              className={`flex-1 px-4 py-2 rounded-lg border-2 transition-colors flex items-center justify-center gap-2 ${
+                imageSource === 'generate'
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-gray-300 text-gray-700 hover:border-gray-400'
+              }`}
+            >
+              <SparklesIcon className="w-5 h-5" />
+              Generate with AI
+            </button>
+          </div>
 
         {imageSource === 'upload' ? (
           <div>
@@ -347,21 +656,41 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
             <p className="text-xs text-gray-500 mt-1">✓ Reference image ready</p>
           </div>
         )}
-      </div>
-
-      {/* Multiple Reference Images (Advanced) */}
-      <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
-        <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-gray-700">
-            Additional Reference Images
-            <span className="ml-2 text-xs text-gray-500">(Up to 3 total)</span>
-          </label>
-          <span className="text-xs text-gray-600">{referenceImages.length}/3 used</span>
         </div>
-        <p className="text-xs text-gray-600">
-          Add multiple reference images for consistent subjects (asset) or visual style (style)
-        </p>
+      )}
 
+      {/* Add Reference Image Button - Only show for text-to-video mode */}
+      {videoMode === 'text-to-video' && !showReferenceImage && (
+        <button
+          type="button"
+          onClick={() => setShowReferenceImage(true)}
+          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <SparklesIcon className="w-5 h-5" />
+          Add Reference Image (Optional)
+        </button>
+      )}
+
+      {/* Multiple Reference Images - Collapsible */}
+      {showMultipleReferences ? (
+        <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700">
+              🎨 Multiple Reference Images (VEO 3.1)
+              <span className="ml-2 text-xs text-gray-500">(Up to 3 total)</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-600">{referenceImages.length}/3 used</span>
+              <button
+                type="button"
+                onClick={() => setShowMultipleReferences(false)}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+          
         {/* Existing Reference Images */}
         {referenceImages.length > 0 && (
           <div className="space-y-2">
@@ -457,24 +786,21 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
             </p>
           </div>
         )}
-      </div>
-
-      {/* Video Generation Mode */}
-      <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700">Video Generation Mode</label>
-        <select
-          value={videoMode}
-          onChange={(e) => setVideoMode(e.target.value as 'text-to-video' | 'image-to-video' | 'video-extension' | 'frame-interpolation' | 'video-editing')}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowMultipleReferences(true)}
+          className="w-full px-4 py-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:border-blue-400 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
         >
-          <option value="text-to-video">Text to Video</option>
-          <option value="image-to-video">Image to Video</option>
-          <option value="video-extension">Video Extension</option>
-          <option value="frame-interpolation">Frame Interpolation</option>
-          <option value="video-editing">Video Editing with Masks</option>
-        </select>
+          <SparklesIcon className="w-5 h-5" />
+          Add Multiple Reference Images (VEO 3.1 - Optional)
+        </button>
+      )}
 
-        {/* Video Extension Mode */}
+      {/* Mode-Specific Sections */}
+      
+      {/* Video Extension Mode */}
         {videoMode === 'video-extension' && (
           <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
             <label className="block text-sm font-medium text-gray-700">Input Video</label>
@@ -509,34 +835,115 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
 
         {/* Frame Interpolation Mode */}
         {videoMode === 'frame-interpolation' && (
-          <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700">Last Frame Image</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  try {
-                    const { url } = await getPresignedUrl({
-                      filename: file.name,
-                      mime: file.type,
-                      kind: 'last_frame',
-                      content_length: file.size,
-                    });
-                    await uploadToPresignedUrl(url, file);
-                    const uploadedUrl = url.split('?')[0];
-                    setLastFrameUrl(uploadedUrl);
-                  } catch (error) {
-                    console.error('Failed to upload image:', error);
-                    alert('Failed to upload image. Please try again.');
-                  }
-                }
-              }}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-            />
-            <p className="text-xs text-gray-500">Upload the last frame to interpolate from reference to this frame</p>
-            {lastFrameUrl && <p className="text-xs text-green-600">✓ Last frame uploaded</p>}
+          <div className="space-y-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-900">
+                Frame Interpolation 🎬 <span className="text-xs font-normal text-purple-600">(VEO 3.1 Feature)</span>
+              </h4>
+            </div>
+            <p className="text-xs text-gray-600">
+              Upload first and last frames to generate a smooth video transition between them. 
+              Perfect for creating animations between two specific moments.
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              {/* First Frame */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  First Frame (Start) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      try {
+                        const { uploadUrl, fileUrl } = await getPresignedUrl({
+                          filename: file.name,
+                          mime: file.type,
+                          kind: 'IMAGE',
+                          content_length: file.size,
+                        });
+                        await uploadToPresignedUrl(uploadUrl, file);
+                        setFirstFrameUrl(fileUrl);
+                      } catch (error) {
+                        console.error('Failed to upload first frame:', error);
+                        alert('Failed to upload image. Please try again.');
+                      }
+                    }
+                  }}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200"
+                />
+                {firstFrameUrl && (
+                  <div className="mt-2">
+                    <img
+                      src={firstFrameUrl}
+                      alt="First frame"
+                      className="w-full h-24 object-cover rounded border border-purple-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFirstFrameUrl('')}
+                      className="text-xs text-red-600 hover:text-red-700 mt-1"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Last Frame */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Last Frame (End) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      try {
+                        const { uploadUrl, fileUrl } = await getPresignedUrl({
+                          filename: file.name,
+                          mime: file.type,
+                          kind: 'IMAGE',
+                          content_length: file.size,
+                        });
+                        await uploadToPresignedUrl(uploadUrl, file);
+                        setLastFrameUrl(fileUrl);
+                      } catch (error) {
+                        console.error('Failed to upload last frame:', error);
+                        alert('Failed to upload image. Please try again.');
+                      }
+                    }
+                  }}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                />
+                {lastFrameUrl && (
+                  <div className="mt-2">
+                    <img
+                      src={lastFrameUrl}
+                      alt="Last frame"
+                      className="w-full h-24 object-cover rounded border border-blue-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setLastFrameUrl('')}
+                      className="text-xs text-red-600 hover:text-red-700 mt-1"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="text-xs text-gray-600 bg-white p-2 rounded border border-gray-200">
+              💡 <strong>Tip:</strong> Your prompt should describe the transition between the two frames. 
+              Both frames are required for interpolation to work. VEO will generate smooth motion between them.
+            </div>
           </div>
         )}
 
@@ -618,214 +1025,6 @@ function Option1Form({ initialPrompt, onSuccess }: { initialPrompt: string; onSu
             <p className="text-xs text-gray-500">Upload a video and mask to edit specific regions</p>
           </div>
         )}
-      </div>
-
-      {/* Veo 3 Video Settings */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium text-gray-700">Veo 3 Video Settings</label>
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-          >
-            {showAdvanced ? (
-              <>
-                <ChevronUpIcon className="w-4 h-4" />
-                Hide Advanced
-              </>
-            ) : (
-              <>
-                <ChevronDownIcon className="w-4 h-4" />
-                Show Advanced
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
-            <select
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(parseInt(e.target.value) as 4 | 6 | 8)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value={4}>4 seconds</option>
-              <option value={6}>6 seconds</option>
-              <option value={8}>8 seconds</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Aspect Ratio</label>
-            <select
-              value={aspect}
-              onChange={(e) => setAspect(e.target.value as '16:9' | '9:16')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="9:16">9:16 (Portrait)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Resolution</label>
-            <select
-              value={resolution}
-              onChange={(e) => setResolution(e.target.value as '720p' | '1080p')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="720p">720p (Faster)</option>
-              <option value="1080p">1080p (Higher Quality)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Audio Generation */}
-        <div className="flex items-start gap-2 bg-blue-50 p-3 rounded-lg">
-          <input
-            type="checkbox"
-            id="generateAudio"
-            checked={generateAudio}
-            onChange={(e) => setGenerateAudio(e.target.checked)}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
-          />
-          <div className="flex-1">
-            <label htmlFor="generateAudio" className="text-sm font-medium text-gray-900">
-              Generate Audio 🔊 <span className="text-xs font-normal text-blue-600">(NEW)</span>
-            </label>
-            <p className="text-xs text-gray-600 mt-0.5">Add AI-generated audio to match the video content</p>
-          </div>
-        </div>
-
-        {/* Advanced Settings */}
-        {showAdvanced && (
-          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">Advanced Veo 3 Settings</h3>
-            
-            {/* Model Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Veo Model</label>
-              <select
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="veo-3.0-generate-001">Veo 3.0 (Standard)</option>
-                <option value="veo-3.0-fast-generate-001">Veo 3.0 Fast</option>
-                <option value="veo-2.0-generate-001">Veo 2.0</option>
-              </select>
-            </div>
-
-            {/* Negative Prompt */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Negative Prompt</label>
-              <input
-                type="text"
-                value={negativePrompt}
-                onChange={(e) => setNegativePrompt(e.target.value)}
-                placeholder="What to avoid in the video (e.g., blurry, distorted)"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Prompt Enhancement */}
-              <div className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  id="enhancePrompt"
-                  checked={enhancePrompt}
-                  onChange={(e) => setEnhancePrompt(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
-                />
-                <div className="flex-1">
-                  <label htmlFor="enhancePrompt" className="text-sm font-medium text-gray-900">
-                    Enhance Prompt with Gemini ✨
-                  </label>
-                  <p className="text-xs text-gray-500 mt-0.5">Use AI to improve your prompt</p>
-                </div>
-              </div>
-
-              {/* Sample Count */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Videos to Generate</label>
-                <select
-                  value={sampleCount}
-                  onChange={(e) => setSampleCount(parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={1}>1 video</option>
-                  <option value={2}>2 videos</option>
-                  <option value={3}>3 videos</option>
-                  <option value={4}>4 videos</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Person Generation */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Person Generation</label>
-                <select
-                  value={personGeneration}
-                  onChange={(e) => setPersonGeneration(e.target.value as 'allow_adult' | 'allow_all' | 'dont_allow')}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="allow_adult">Adults Only</option>
-                  <option value="allow_all">All Ages</option>
-                  <option value="dont_allow">No People</option>
-                </select>
-              </div>
-
-              {/* Compression Quality */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Compression Quality</label>
-                <select
-                  value={compressionQuality}
-                  onChange={(e) => setCompressionQuality(e.target.value as 'optimized' | 'lossless')}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="optimized">Optimized (Smaller files)</option>
-                  <option value="lossless">Lossless (Best quality)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Seed for Reproducibility */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Seed (Optional) - For reproducible results
-              </label>
-              <input
-                type="number"
-                value={seed || ''}
-                onChange={(e) => setSeed(e.target.value ? parseInt(e.target.value) : undefined)}
-                placeholder="Leave empty for random"
-                min={0}
-                max={4294967295}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Resize Mode for Image-to-Video */}
-            {referenceImageUrl && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Image Resize Mode</label>
-                <select
-                  value={resizeMode}
-                  onChange={(e) => setResizeMode(e.target.value as 'pad' | 'crop')}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="pad">Pad (Keep entire image)</option>
-                  <option value="crop">Crop (Fill frame)</option>
-                </select>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Priority */}
       <div>

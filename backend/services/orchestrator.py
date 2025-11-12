@@ -189,7 +189,10 @@ class Orchestrator:
         Process a prompt-to-lipsync job through its workflow
         Following the state machine: QUEUED → RUNNING → POST → DONE
         """
-        job = self.get_job(job_id)
+        # Always query fresh to avoid session attachment issues
+        job = self.db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise NotFoundError(f"Job {job_id} not found")
         
         # Check if job is already in a terminal state
         if job.status in ("DONE", "ERROR"):
@@ -224,7 +227,10 @@ class Orchestrator:
         Process an audio-driven job through its workflow
         Following the state machine: QUEUED → RUNNING → POST → DONE
         """
-        job = self.get_job(job_id)
+        # Always query fresh to avoid session attachment issues
+        job = self.db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise NotFoundError(f"Job {job_id} not found")
         
         # Check if job is already in a terminal state
         if job.status in ("DONE", "ERROR"):
@@ -259,7 +265,10 @@ class Orchestrator:
         Process a job through its workflow based on its method
         This is a convenience method that routes to the appropriate specialized method
         """
-        job = self.get_job(job_id)
+        # Always query fresh to avoid session attachment issues
+        job = self.db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            raise NotFoundError(f"Job {job_id} not found")
         
         if job.method == "PROMPT_TO_LIPSYNC":
             await self.run_prompt_to_lipsync(job_id)
@@ -294,8 +303,8 @@ class Orchestrator:
         job.updated_at = now
         job.meta = meta
         
-        with db_transaction() as session:
-            session.add(job)
+        # Commit using the orchestrator's session
+        self.db.commit()
         
         log_job_event(str(job.id), "status_changed", extra={"status": "RUNNING"})
         
@@ -327,8 +336,8 @@ class Orchestrator:
         job.updated_at = now
         job.meta = meta
         
-        with db_transaction() as session:
-            session.add(job)
+        # Commit using the orchestrator's session
+        self.db.commit()
         
         log_job_event(str(job.id), "status_changed", extra={"status": "POST"})
         
@@ -370,8 +379,8 @@ class Orchestrator:
         job.completed_at = completed_at
         job.meta = meta
         
-        with db_transaction() as session:
-            session.add(job)
+        # Commit using the orchestrator's session
+        self.db.commit()
         
         log_job_event(str(job.id), "status_changed", extra={"status": "DONE", "output_url": output_url})
         
@@ -404,8 +413,8 @@ class Orchestrator:
         job.meta = meta
         job.updated_at = now
         
-        with db_transaction() as session:
-            session.add(job)
+        # Commit using the orchestrator's session
+        self.db.commit()
         
         log_job_event(str(job.id), "status_changed", extra={"status": "ERROR", "error_message": error_message})
         
@@ -437,9 +446,23 @@ class Orchestrator:
         # Video generation modes
         input_image_url = video_opts.get("input_image_url")
         input_video_url = video_opts.get("input_video_url")
+        first_frame_url = video_opts.get("first_frame_url")
         last_frame_url = video_opts.get("last_frame_url")
         mask_url = video_opts.get("mask_url")
         mask_mode = video_opts.get("mask_mode")
+        
+        # Determine the input image based on mode
+        # For frame interpolation, use first_frame_url as input_image
+        input_image_for_veo = None
+        if first_frame_url and last_frame_url:
+            # Frame interpolation mode - first frame becomes input image
+            input_image_for_veo = first_frame_url
+        elif input_image_url:
+            # Image-to-video mode
+            input_image_for_veo = input_image_url
+        elif reference_image_url:
+            # Legacy reference image
+            input_image_for_veo = reference_image_url
         
         # Reference images
         reference_images = None
@@ -459,7 +482,7 @@ class Orchestrator:
         operation_name = self.veo_adapter.generate_video(
             prompt=script,
             model_id=model_id,
-            input_image=reference_image_url or input_image_url,
+            input_image=input_image_for_veo,
             input_video=input_video_url,
             last_frame=last_frame_url,
             mask=mask_url,

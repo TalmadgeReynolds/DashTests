@@ -1,15 +1,25 @@
-# Veo 3 Features Implementation Summary
+# Veo 3 & 3.1 Features Implementation Summary
 
 ## Overview
-Successfully added comprehensive Veo 3 API features to the DashTests application, including backend adapters, schemas, routes, and frontend UI controls.
+Successfully added comprehensive Veo 3 and 3.1 API features to the DashTests application, including backend adapters, schemas, routes, and frontend UI controls. The adapter now supports both Vertex AI (Veo 3.0) and Gemini API (Veo 3.1) endpoints.
+
+## What's New in VEO 3.1 🆕
+- **State-of-the-art video generation** with stunning realism
+- **Native audio generation** synchronized with video content
+- **Video extension** - Extend previously generated Veo videos by 7 seconds (up to 20 times)
+- **Enhanced reference images** - Up to 3 reference images for content guidance
+- **Frame-specific generation** - Specify first and last frames for interpolation
+- **Improved quality** - 720p and 1080p resolution support
+- **Gemini API integration** - Uses the new Gemini API endpoint
 
 ## Features Added
 
 ### 1. Video Generation Modes ✅
+Users can select from these modes in the UI dropdown:
 - **Text-to-Video**: Generate videos from text prompts (default mode)
 - **Image-to-Video**: Animate static images with `input_image_url` parameter
-- **Video Extension**: Extend existing videos with `input_video_url` parameter
-- **Frame Interpolation**: Generate video between two frames using `last_frame_url`
+- **Video Extension**: Extend existing Veo videos with `input_video_url` parameter (VEO 3.1)
+- **Frame Interpolation**: Generate smooth video between two frames using `first_frame_url` and `last_frame_url` (VEO 3.1)
 - **Video Editing with Masks**: Add/remove objects from videos using `mask_url` and `mask_mode`
 
 ### 2. Advanced Veo 3 Features ✅
@@ -78,11 +88,14 @@ Successfully added comprehensive Veo 3 API features to the DashTests application
 
 #### Model Selection
 - **Options**:
+  - veo-3.1-generate-preview (Preview) ⭐ NEW
+  - veo-3.1-fast-generate-preview (Fast Preview) ⭐ NEW
   - veo-3.0-generate-001 (Standard)
   - veo-3.0-fast-generate-001 (Fast)
   - veo-2.0-generate-001 (Legacy)
 - **Parameter**: `model_id`
 - **UI**: Dropdown in advanced settings
+- **Note**: VEO 3.1 models use Gemini API, VEO 3.0 models use Vertex AI
 
 ### 4. Reference Images ✅
 - **Support**: Up to 3 asset images or 1 style image
@@ -97,9 +110,14 @@ Successfully added comprehensive Veo 3 API features to the DashTests application
 
 #### 1. `/workspaces/DashTests/backend/adapters/veo_adapter.py`
 - **New Methods**:
-  - `generate_video()` - Main method with full feature support
-  - `poll_operation()` - Poll long-running operations
+  - `generate_video()` - Main method with full feature support (supports both VEO 3.0 and 3.1)
+  - `poll_operation()` - Poll long-running operations (automatically detects API version)
   - `_prepare_media()` - Helper for media preparation
+  - `_is_veo_31_model()` - Detect if model is VEO 3.1 (uses Gemini API)
+  - `_convert_to_gemini_format()` - Convert Vertex AI format to Gemini API format
+- **Dual API Support**:
+  - Vertex AI endpoint for VEO 3.0 models
+  - Gemini API endpoint for VEO 3.1 models
 - **Legacy Methods**: Maintained for backward compatibility
   - `create_job()` - Now calls `generate_video()`
   - `poll_result()` - Now calls `poll_operation()`

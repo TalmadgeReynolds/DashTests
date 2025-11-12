@@ -34,6 +34,7 @@ class VideoOpts(BaseModel):
     # Video generation modes
     input_image_url: Optional[HttpUrl] = Field(None, description="Input image URL for image-to-video")
     input_video_url: Optional[HttpUrl] = Field(None, description="Input video URL for video extension")
+    first_frame_url: Optional[HttpUrl] = Field(None, description="First frame URL for frame interpolation (VEO 3.1)")
     last_frame_url: Optional[HttpUrl] = Field(None, description="Last frame URL for frame interpolation")
     mask_url: Optional[HttpUrl] = Field(None, description="Mask URL for video editing")
     mask_mode: Optional[str] = Field(None, description="Mask mode: MASK_MODE_USER_PROVIDED, etc.")

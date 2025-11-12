@@ -9,6 +9,7 @@ import JobDetail from '@/pages/JobDetail';
 import Screenplay from '@/pages/Screenplay';
 import TestAvatarApi from '@/pages/TestAvatarApi';
 import Enhancement from '@/pages/Enhancement';
+import MinimaxVideo from '@/pages/MinimaxVideo';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ function AppContent() {
         <Route path="/jobs/:id" element={<JobDetail />} />
         <Route path="/screenplay" element={<Screenplay />} />
         <Route path="/enhancement" element={<Enhancement />} />
+        <Route path="/minimax" element={<MinimaxVideo />} />
         <Route path="/test-avatar-api" element={<TestAvatarApi />} />
         {/* Add more routes as needed */}
       </Routes>

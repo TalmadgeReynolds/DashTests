@@ -15,7 +15,7 @@ from .utils.prometheus import (
     provider_latency_ms, postfx_runtime_s
 )
 from .exceptions import LipSyncException, ProviderError
-from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars, enhancement
+from .routes import lipsync, jobs, uploads, webhooks, screenplay, images, voices, avatars, enhancement, minimax
 from .routes.websockets import setup_socketio
 from .routes import websocket_test
 
@@ -214,6 +214,7 @@ app.include_router(avatars.router, prefix="/api/v1")
 app.include_router(websocket_test.router, prefix="/api/v1")
 app.include_router(access.router, prefix="/api/v1")
 app.include_router(enhancement.router, prefix="/api/v1")
+app.include_router(minimax.router, prefix="/api/v1")
 
 # Set up WebSocket (Socket.IO) support
 setup_socketio(app)

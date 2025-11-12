@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     TOPAZ_API_KEY: Optional[str] = None
     TOPAZ_MOCK_MODE: bool = True
     
+    # MiniMax Hailuo 2.3 settings
+    MINIMAX_API_KEY: Optional[str] = None
+    MINIMAX_GROUP_ID: Optional[str] = None  # Optional group ID for organization
+    MINIMAX_MOCK_MODE: bool = True
+    
     # Webhook verification secrets
     WEBHOOK_SECRET_HEYGEN: str = "test-webhook-secret"
     
